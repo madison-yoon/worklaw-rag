@@ -31,8 +31,13 @@ def request_json(url: str, params: dict[str, str]) -> dict[str, Any]:
     try:
         payload = response.json()
     except ValueError as error:
+        # API 오류 페이지의 안내 문구만 추출한다. 요청 URL은 OC 인증키가 포함될 수 있어 출력하지 않는다.
+        from bs4 import BeautifulSoup
+
+        message = BeautifulSoup(response.text, "html.parser").get_text(" ", strip=True)
         raise RuntimeError(
-            f"국가법령정보센터가 JSON이 아닌 응답을 반환했습니다: {response.text[:500]}"
+            "국가법령정보센터가 JSON 대신 오류 페이지를 반환했습니다. "
+            f"HTTP {response.status_code}, 응답 내용: {message[:900]}"
         ) from error
 
     if not isinstance(payload, dict):
@@ -139,20 +144,14 @@ def main():
             ".env에 LAW_API_OC를 설정하세요. 국가법령정보센터에서 발급받은 OC 인증키가 필요합니다."
         )
 
-    common_params = {
-        "OC": settings.law_api_oc,
-        "type": "JSON",
-        "query": "근로기준법",
-        "display": "100",
-        "page": "1",
-    }
-
     listing = request_json(
         LIST_URL,
         {"OC": settings.law_api_oc, "target": "eflaw", "type": "JSON",
          "query": "근로기준법", "display": "100", "page": "1"},
     )
-    law_id = find_value(listing, ("법령ID", "법령 id", "법령ID값"))
+    # 공식 활용방법은 목록 응답의 '법령일련번호' 또는 '법령상세링크'로
+    # 본문을 조회하도록 안내한다. 법령일련번호를 우선 사용한다.
+    law_id = find_value(listing, ("법령일련번호", "법령ID", "법령 id", "법령ID값"))
     if law_id is None:
         message = find_value(listing, ("resultMsg", "메시지", "오류메시지"))
         raise RuntimeError(
