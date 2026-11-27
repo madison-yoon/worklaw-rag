@@ -2,17 +2,22 @@
 <html lang="ko">
 <head>
   <meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>MOMO | 영화 리뷰 AI 검색</title><link rel="stylesheet" href="/static/style.css">
+  <title>MOMO | AI 영화 검색·추천</title><link rel="stylesheet" href="/static/style.css">
 </head>
 <body>
   <main class="shell">
-    <header><div class="brand-mark">M</div><div><p class="eyebrow">MOVIE MEMORY · REVIEW ARCHIVE</p><h1>MOMO RAG</h1></div><span class="status"><i></i> 리뷰 검색</span></header>
-    <section class="hero"><p class="eyebrow">MOVIE REVIEW · RAG ASSISTANT</p><h2>영화에 남긴 감상을,<br><em>근거와 함께</em> 찾아보세요.</h2><p class="intro">MOMO의 영화 리뷰를 의미 기반으로 검색하고, 실제 리뷰 내용을 근거로 답변합니다.</p>
-      <div class="search-box"><textarea id="question" rows="2" placeholder="예: 인터스텔라에서 음악과 가족 서사를 좋게 평가한 리뷰는?"></textarea><button id="ask">리뷰 검색 <span>→</span></button></div>
-      <div class="suggestions"><button data-q="기생충의 연기와 촬영을 긍정적으로 평가한 리뷰는?">기생충 리뷰</button><button data-q="라라랜드의 음악과 스토리에 대한 서로 다른 평가는?">라라랜드 비교</button><button data-q="겨울왕국의 음악과 색채에 대한 감상은?">겨울왕국 감상</button></div>
+    <header><div class="brand-mark">M</div><div><p class="eyebrow">MOVIE MEMORY · REVIEW ARCHIVE</p><h1>MOMO RAG</h1></div><span class="status"><i></i> 영화 검색 · 추천</span></header>
+    <section class="hero"><p class="eyebrow">MOVIE DISCOVERY · RAG ASSISTANT</p><h2>취향을 말하면,<br><em>영화가 가까워집니다.</em></h2><p class="intro">MOMO의 영화 정보와 리뷰를 검색해 취향에 맞는 작품을 찾고, 추천 이유를 실제 리뷰 근거와 함께 확인하세요.</p>
+      <div class="search-box"><textarea id="question" rows="2" placeholder="예: 음악이 좋고 여운이 남는 SF 영화를 추천해줘."></textarea><button id="ask">AI 검색 <span>→</span></button></div>
+      <div class="suggestions"><button data-q="음악이 좋고 감정적인 여운이 남는 영화를 추천해줘.">음악과 여운</button><button data-q="가볍게 웃을 수 있는 코미디 영화를 추천해줘.">가벼운 코미디</button><button data-q="연출과 촬영이 인상적이라는 리뷰가 많은 영화는?">연출과 촬영</button><button data-q="라라랜드의 음악과 스토리에 대한 서로 다른 평가는?">리뷰 비교</button></div>
     </section>
-    <section id="result" class="result" aria-live="polite"><div class="empty"><span>01</span><p>질문을 입력하면 답변과 검색된 리뷰 근거가 표시됩니다.</p></div></section>
-    <footer><span>MOMO 프로젝트 시연용 리뷰 데이터</span><span>리뷰 감상 검색 · 객관적 평론이나 사실 판정이 아님</span></footer>
+    <section class="recommendations">
+      <div class="section-heading"><div><p class="eyebrow">MOMO PICKS</p><h2>오늘의 추천 후보</h2></div><span>기존 MOMO 추천 API</span></div>
+      <div class="genre-filters"><button class="active" data-genre="">전체</button><button data-genre="드라마">드라마</button><button data-genre="코미디">코미디</button><button data-genre="액션">액션</button><button data-genre="SF">SF</button></div>
+      <div id="recommendation-list" class="recommendation-grid"><p class="recommendation-message">MOMO 추천 목록을 불러오는 중입니다.</p></div>
+    </section>
+    <section id="result" class="result" aria-live="polite"><div class="empty"><span>01</span><p>질문을 입력하면 AI 답변과 검색된 리뷰 근거가 표시됩니다.</p></div></section>
+    <footer><span>MOMO 영화 정보 API · RAG 리뷰 검색</span><span>추천 후보는 MOMO 기준, 추천 설명은 검색된 리뷰 근거 사용</span></footer>
   </main><script src="/static/app.js"></script>
 </body>
 </html>
