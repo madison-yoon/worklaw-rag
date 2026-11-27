@@ -1,54 +1,94 @@
 # WorkLaw RAG
 
-근로기준법 조문을 검색하고 검색된 근거를 바탕으로 답변하는 한국어 RAG 웹서비스 POC입니다.
+근로기준법 문서를 검색하고 검색된 원문 근거에 기반해 답변하는 한국어 RAG 웹서비스 POC입니다.
 
 ## 기술 구성
-
 - API: FastAPI
-- LLM: OpenAI `gpt-4.1-mini`
-- Embedding: OpenAI `text-embedding-3-small` (1,536 dimensions)
-- Vector DB: ChromaDB PersistentClient (로컬 디스크 저장)
+- LLM 및 Embedding: OpenAI API (모델은 환경 설정)
+- Vector DB: MongoDB Atlas Vector Search
 - UI: HTML / CSS / Vanilla JavaScript
+- Python: 3.12 이상
 
-## 실행 순서
+## 1. 실행 환경 준비
 
-Python 3.11 이상을 권장합니다.
+기존 Conda 환경을 활성화하거나 Python 3.12 이상 환경을 준비합니다.
 
 ```bash
-python -m venv .venv
-source .venv/Scripts/activate
 pip install -r requirements.txt
-cp .env.example .env
 ```
 
-`.env`의 `OPENAI_API_KEY`에 본인의 API 키를 입력합니다. 키를 GitHub에 커밋하지 마세요.
+프로젝트 루트의 `.env`에 다음 항목을 설정합니다. 기존 OPENAI_API_KEY 값은 유지하고 MongoDB URI만 추가하면 됩니다.
+
+```dotenv
+OPENAI_API_KEY=기존에_설정한_키
+MONGODB_URI=mongodb+srv://사용자:비밀번호@클러스터주소/
+MONGODB_DATABASE=worklaw_db
+MONGODB_COLLECTION=law_chunks
+MONGODB_VECTOR_INDEX=vector_index
+MONGODB_VECTOR_PATH=embedding
+```
+
+MongoDB 비밀번호에 특수문자가 포함되어 있으면 URI에 맞게 URL 인코딩해야 합니다. 실제 `.env`는 절대 Git에 커밋하지 않습니다.
+
+## 2. MongoDB Atlas Vector Search 인덱스
+
+Atlas에서 대상 Database와 Collection을 생성하거나 첫 데이터 저장 시 자동 생성되도록 둡니다. 이후 해당 Collection에서 Vector Search Index를 생성합니다.
+
+인덱스 이름은 `vector_index`로 지정하고 아래 정의를 사용합니다.
+
+```json
+{
+  "fields": [
+    {
+      "type": "vector",
+      "path": "embedding",
+      "numDimensions": 1536,
+      "similarity": "cosine"
+    }
+  ]
+}
+```
+
+임베딩 차원을 변경했다면 인덱스의 numDimensions도 동일하게 변경해야 합니다.
+
+## 3. 연결 확인 및 데이터 구축
 
 ```bash
+python scripts/check_mongodb.py
 python scripts/collect_data.py
 python scripts/build_index.py
+python scripts/check_mongodb.py
+```
+
+- 첫 번째 점검에서 MongoDB 접속과 Vector Search 인덱스 상태를 확인합니다.
+- 수집기는 국가법령정보센터의 공개 근로기준법 원문을 가져와 JSONL로 정제합니다.
+- 인덱싱 스크립트는 조문을 청킹하고 OpenAI 임베딩 API를 호출한 뒤 MongoDB에 upsert합니다.
+- Vector Search 인덱스가 READY 상태가 된 후 검색을 실행합니다.
+
+## 4. 웹서비스 실행
+
+```bash
 uvicorn app.main:app --reload
 ```
 
-브라우저에서 `http://127.0.0.1:8000`을 열고 질문합니다. 인덱스 구축은 OpenAI 임베딩 API를 호출하므로 API 사용료가 발생할 수 있습니다.
+브라우저에서 `http://127.0.0.1:8000`을 엽니다.
 
-검색 평가:
+- `GET /api/health`: MongoDB 연결, chunk 수, API 키 설정 상태
+- `POST /api/ask`: 자연어 질문에 대한 근거 기반 답변
+- `GET /docs`: FastAPI API 문서
+
+## 5. 평가 및 테스트
 
 ```bash
+pytest -q
 python scripts/evaluate.py
 ```
 
-## 데이터 출처 및 범위
+검색 평가는 기대 조문이 있는 오프라인 평가 질문을 사용하며 Recall@K와 MRR@K를 출력합니다. 평가 라벨은 서비스 실행 경로에서 사용하지 않습니다.
 
-- 국가법령정보센터, 근로기준법: https://law.go.kr/LSW/lsInfoP.do?lsiSeq=285279
-- 수집 스크립트가 공식 페이지의 조문 본문을 추출해 `data/processed/labor_standards_act.jsonl`로 저장합니다.
-- 법령은 개정될 수 있습니다. 실제 권리·의무 판단 전에는 반드시 국가법령정보센터의 최신 시행 법령과 관련 하위법령을 확인하세요.
+## 데이터 출처 및 한계
+- 국가법령정보센터 근로기준법 원문을 수집합니다.
+- 법령은 개정될 수 있으므로 실제 권리·의무 판단 전에는 최신 시행 법령과 관련 하위법령을 확인해야 합니다.
 - 본 서비스는 학습·정보 탐색용 POC이며 법률 자문이 아닙니다.
-
-## 평가
-
-`data/evaluation/questions.json`의 질문과 기대 조문을 기준으로 Recall@5 및 MRR@5를 계산합니다. 개선 실험에서는 chunk 크기·overlap·top-k를 한 번에 하나씩 바꾸고 동일 질문 세트로 재측정합니다. 실험 결과와 한계는 `docs/evaluation.md`에 기록합니다.
-
-## API
-
-- `GET /api/health`: 서비스 및 인덱스 상태
-- `POST /api/ask`: `{ "question": "연차 유급휴가는 어떻게 보장되나요?" }`
+- 검색 품질은 수집 범위, HTML 추출 정확도, 청킹, 임베딩, Vector Search 인덱스에 영향을 받습니다.
+- OpenAI 임베딩 및 답변 생성에는 API 사용료가 발생할 수 있습니다.
