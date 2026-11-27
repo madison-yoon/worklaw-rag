@@ -1,37 +1,37 @@
 # 데이터 수집 및 전처리
 
 ## 원천 데이터
-
 - 제공기관: 법제처 국가법령정보센터
-- 문서: 근로기준법 본문
+- 문서: 근로기준법
 - URL: https://law.go.kr/LSW/lsInfoP.do?lsiSeq=285279
-- 수집 방식: `scripts/collect_data.py`가 공식 페이지를 HTTP 요청하고 HTML 본문에서 조문 제목 패턴을 찾아 조문별 JSONL로 저장한다.
+- 수집 코드: scripts/collect_data.py
+- 정제 결과: data/processed/labor_standards_act.jsonl
 
-## 정제 및 저장 구조
+수집 스크립트는 공식 페이지에서 본문을 추출하고 조문 제목 패턴을 기준으로 레코드를 만든다. 조문이 추출되지 않거나 20개 미만이면 실패 처리한다. 실제 추출 수는 실행 로그로 확인한다.
 
-각 레코드는 다음 필드를 가진다.
-
-| 필드 | 의미 |
+## JSONL 필드
+| 필드 | 설명 |
 |---|---|
 | article_id | 제17조 등 조문 식별자 |
 | title | 조문 제목 |
-| text | 조문 원문 텍스트 |
-| source | 원문 URL |
+| text | 조문 원문 |
+| source | 공식 원문 URL |
 
-원문에서 조문 단위로 분리한 다음 RecursiveCharacterTextSplitter로 청킹한다. chunk metadata에는 article_id, title, source를 반복 저장하여 검색 결과의 출처를 복원할 수 있다.
+## 청킹 설계
+- 구현: app/rag/chunker.py의 split_documents()
+- 기본 chunk_size: 500자
+- 기본 chunk_overlap: 80자
+- 경계 우선순위: 문단, 줄바꿈, 문장 종결, 공백
+- article_id, title, source를 각 chunk metadata에 유지
 
-## 청킹 설정
+조문 단위로 먼저 분리한 뒤 문자 길이 기준으로 청킹한다. 500/80은 초기 실험값이며 최적값으로 단정하지 않는다. 후속 실험에서 항·호 단위 구조화 청킹과 비교한다.
 
-- chunk_size: 500 characters
-- chunk_overlap: 80 characters
-- separators: 문단, 줄바꿈, 문장 종결, 공백 순서
-
-이는 POC 초기 설정이다. 법령 조문은 조·항·호의 구조가 중요하므로 향후에는 항·호 단위 구조화 청킹과 조문 전체 문맥 병합을 비교할 필요가 있다.
-
-## 벡터 저장
-
+## 임베딩 및 벡터 DB
+- OpenAI Embedding: text-embedding-3-small
+- 차원: 1,536
 - DB: ChromaDB PersistentClient
-- collection: `worklaw_articles`
-- distance: cosine
-- embedding: `text-embedding-3-small`, 1,536 dimensions
-- 저장 경로: `./chroma_db` (Git 제외)
+- Collection: worklaw_articles
+- 거리: cosine
+- 경로: ./chroma_db (Git 제외)
+
+평가 질문과 기대 조문은 data/evaluation/questions.json에 별도 보관하며 검색 경로에 정답 라벨을 주입하지 않는다.

@@ -1,25 +1,33 @@
-"""Evaluate retrieval with article-level Recall@K and reciprocal rank."""
+"""Recall@K와 MRR@K로 조문 검색 품질을 평가한다."""
 import json
 from pathlib import Path
 from app.rag.retriever import retrieve
 
 TEST_FILE = Path("data/evaluation/questions.json")
 
+def calculate_metrics(cases, search, top_k=5):
+    if not cases:
+        raise ValueError("평가 질문이 없습니다.")
+    hits, reciprocal_ranks, details = 0, [], []
+    for case in cases:
+        expected = set(case["expected_articles"])
+        results = search(case["question"], top_k)
+        ranked = [row.get("metadata", {}).get("article_id") for row in results]
+        rank = next((i + 1 for i, value in enumerate(ranked) if value in expected), None)
+        hits += int(rank is not None)
+        reciprocal_ranks.append(1 / rank if rank else 0)
+        details.append({"question": case["question"], "expected": sorted(expected),
+                        "retrieved": ranked, "hit": rank is not None, "rank": rank})
+    return {"question_count": len(cases), "top_k": top_k, "recall_at_k": hits / len(cases),
+            "mrr_at_k": sum(reciprocal_ranks) / len(cases), "details": details}
+
 def main():
     cases = json.loads(TEST_FILE.read_text(encoding="utf-8"))
-    recall_hits = 0
-    reciprocal_ranks = []
-    for case in cases:
-        results = retrieve(case["question"], top_k=5)
-        ranked = [row["metadata"].get("article_id") for row in results]
-        expected = set(case["expected_articles"])
-        hit_rank = next((i + 1 for i, article in enumerate(ranked) if article in expected), None)
-        recall_hits += int(hit_rank is not None)
-        reciprocal_ranks.append(1 / hit_rank if hit_rank else 0)
-        print(f"질문: {case['question']} | 기대 조문: {sorted(expected)} | 검색 결과: {ranked} | hit: {bool(hit_rank)}")
-    n = len(cases)
-    print(f"Recall@5: {recall_hits / n:.3f}")
-    print(f"MRR@5: {sum(reciprocal_ranks) / n:.3f}")
+    report = calculate_metrics(cases, lambda question, k: retrieve(question, top_k=k))
+    for item in report["details"]:
+        print(f"{item['question']} | 기대={item['expected']} | 검색={item['retrieved']} | 적중={item['hit']}")
+    print(f"Recall@{report['top_k']}: {report['recall_at_k']:.3f}")
+    print(f"MRR@{report['top_k']}: {report['mrr_at_k']:.3f}")
 
 if __name__ == "__main__":
     main()
