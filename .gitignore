@@ -3,7 +3,6 @@
 __pycache__/
 *.py[cod]
 .pytest_cache/
-chroma_db/
 *.log
 .idea/
 .vscode/
@@ -11,4 +10,3 @@ chroma_db/
 htmlcov/
 data/processed/
 data/chroma/
-
