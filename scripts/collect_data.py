@@ -4,9 +4,14 @@
 Spring API에서 가져오고, 리뷰 문장은 MOMO-RAG/scripts/seed.py의 공개 시연 데이터다.
 """
 import json
+import sys
 from pathlib import Path
 
 import requests
+
+ROOT = Path(__file__).resolve().parents[1]
+if str(ROOT) not in sys.path:
+    sys.path.insert(0, str(ROOT))
 
 from app.config import settings
 
