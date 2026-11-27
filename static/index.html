@@ -1,0 +1,17 @@
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>WorkLaw | 근로기준법 검색 도우미</title><link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+  <main class="shell">
+    <header><div class="brand-mark">W</div><div><p class="eyebrow">WORKER KNOWLEDGE BASE</p><h1>WorkLaw</h1></div><span class="status"><i></i> 법령 검색</span></header>
+    <section class="hero"><p class="eyebrow">LABOR STANDARDS ACT · RAG ASSISTANT</p><h2>일하는 기준을,<br><em>근거부터</em> 확인하세요.</h2><p class="intro">근로기준법에 관해 질문하면 관련 조문을 검색하고 근거와 함께 설명합니다.</p>
+      <div class="search-box"><textarea id="question" rows="2" placeholder="예: 연차 유급휴가는 어떻게 보장되나요?"></textarea><button id="ask">질문하기 <span>→</span></button></div>
+      <div class="suggestions"><button data-q="근로계약서를 작성할 때 명시해야 하는 내용은?">근로계약서</button><button data-q="임금은 어떤 원칙으로 지급해야 하나요?">임금 지급</button><button data-q="연차 유급휴가는 어떻게 보장되나요?">연차 휴가</button><button data-q="해고할 때 지켜야 할 절차는?">해고 절차</button></div>
+    </section>
+    <section id="result" class="result" aria-live="polite"><div class="empty"><span>01</span><p>질문을 입력하면 답변과 관련 조문이 여기에 표시됩니다.</p></div></section>
+    <footer><span>국가법령정보센터 근로기준법 기반</span><span>학습·정보 탐색용 · 법률 자문 아님</span></footer>
+  </main><script src="/static/app.js"></script>
+</body></html>
