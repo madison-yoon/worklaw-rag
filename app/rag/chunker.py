@@ -10,7 +10,7 @@ def _cut_at_boundary(text: str, start: int, end: int) -> int:
 
 
 def split_documents(documents: list[dict], chunk_size: int = 500, chunk_overlap: int = 80) -> list[dict]:
-    """리뷰와 MOMO 영화 상세 메타데이터를 함께 검색할 수 있도록 청킹한다."""
+    """리뷰 본문을 청킹하고 영화 메타데이터와 출처를 각 chunk에 보존한다."""
     if chunk_size <= 0:
         raise ValueError("chunk_size는 0보다 커야 합니다.")
     if chunk_overlap < 0 or chunk_overlap >= chunk_size:
@@ -19,6 +19,9 @@ def split_documents(documents: list[dict], chunk_size: int = 500, chunk_overlap:
     chunks = []
     for doc in documents:
         text = " ".join(doc["text"].split())
+        review_title = doc.get("review_title") or doc.get("title") or ""
+        if not review_title.strip():
+            raise ValueError(f'리뷰 제목이 없습니다: {doc.get("document_id", "unknown")}')
         metadata = doc.get("movie_metadata_text", "")
         start = 0
         index = 0
@@ -29,7 +32,7 @@ def split_documents(documents: list[dict], chunk_size: int = 500, chunk_overlap:
                 embedding_text = (
                     f'영화: {doc["movie_title"]}\n'
                     f'영화 정보: {metadata}\n'
-                    f'리뷰 제목: {doc["title"]}\n{piece}'
+                    f'리뷰 제목: {review_title}\n{piece}'
                 )
                 chunks.append({
                     "id": f'{doc["document_id"]}-{index}',
@@ -43,7 +46,7 @@ def split_documents(documents: list[dict], chunk_size: int = 500, chunk_overlap:
                     "overview": doc.get("overview", ""),
                     "text": piece,
                     "embedding_text": embedding_text,
-                    "title": doc["title"],
+                    "title": review_title,
                     "source": doc["source"],
                     "source_api": doc.get("source_api", ""),
                     "chunk_index": index,
