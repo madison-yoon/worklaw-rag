@@ -58,12 +58,12 @@ def normalize_text(value: Any) -> str:
         return " ".join(filter(None, (normalize_text(item) for item in value.values())))
     if value is None:
         return ""
-    return re.sub(r"\\s+", " ", str(value)).strip()
+    return re.sub(r"\s+", " ", str(value)).strip()
 
 
 def find_law_record(data: Any, law_name: str) -> dict[str, Any] | None:
     """목록 응답에서 이름과 법령 ID가 같은 레코드에 있는 법령만 선택한다."""
-    expected_name = re.sub(r"\\s+", "", law_name)
+    expected_name = re.sub(r"\s+", "", law_name)
 
     def walk(node: Any) -> dict[str, Any] | None:
         if isinstance(node, dict):
@@ -76,7 +76,7 @@ def find_law_record(data: Any, law_name: str) -> dict[str, Any] | None:
                 None,
             )
             if name is not None and law_id is not None:
-                normalized_name = re.sub(r"\\s+", "", normalize_text(name))
+                normalized_name = re.sub(r"\s+", "", normalize_text(name))
                 if normalized_name == expected_name:
                     return node
 
@@ -161,7 +161,7 @@ def extract_articles(payload: dict[str, Any]) -> list[dict[str, Any]]:
         records[article_id] = {
             "article_id": article_id,
             "title": f"{article_id}({title_text})",
-            "text": f"{article_id}({title_text})\\n{article_text}",
+            "text": f"{article_id}({title_text})\n{article_text}",
             "source": SOURCE_URL,
             "law_name": "근로기준법",
             "effective_date": effective_date,
@@ -219,7 +219,7 @@ def main():
     returned_law_name = normalize_text(
         find_value(detail, ("법령명_한글", "법령명한글", "법령명"))
     )
-    if returned_law_name and re.sub(r"\\s+", "", returned_law_name) != "근로기준법":
+    if returned_law_name and re.sub(r"\s+", "", returned_law_name) != "근로기준법":
         raise RuntimeError(
             f"요청한 법령과 다른 본문이 반환되었습니다: {returned_law_name}"
         )
@@ -236,7 +236,7 @@ def main():
     temp_path = OUTPUT_PATH.with_suffix(".jsonl.tmp")
     with temp_path.open("w", encoding="utf-8") as file:
         for article in articles:
-            file.write(json.dumps(article, ensure_ascii=False) + "\\n")
+            file.write(json.dumps(article, ensure_ascii=False) + "\n")
     temp_path.replace(OUTPUT_PATH)
 
     effective_date = articles[0].get("effective_date") or "API 응답 미제공"
