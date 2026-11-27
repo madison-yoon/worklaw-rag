@@ -1,58 +1,58 @@
-# MOMO 리뷰 데이터 구축 및 전처리
+# MOMO 영화·리뷰 데이터 구축
 
-## 데이터 원천과 범위
+## 데이터 출처
 
-원천은 기존 MOMO 프로젝트의 RAG 시연 데이터다.
+| 구분 | 출처 | 사용 필드 |
+|---|---|---|
+| 영화 상세 | MOMO GET /api/movies/{movieCode} | movieCode, title, releaseDate, genre, director, actors, overview |
+| 추천 후보 | MOMO GET /api/movies/recommendations | movieCode, title, releaseDate, genre, director, posterUrl, box-office rank |
+| 리뷰 시연 데이터 | MOMO MOMO-RAG/scripts/seed.py | review ID, movie code, movie title, review title, review content |
 
-- 원본 저장소: https://github.com/madison-yoon/MOMO
-- 원본 코드: `MOMO-RAG/scripts/seed.py`
-- 원본 상수: `MOVIES`, `OPINIONS`
-- 이관 데이터: `data/raw/momo_reviews.jsonl`
-- 정제 결과: `data/processed/momo_reviews.jsonl`
-- 수집·정제 코드: `scripts/collect_data.py`
+리뷰는 기존 RAG 수업용 Seed에 포함된 가상 감상 10건이다. 실제 회원의 리뷰·닉네임·회원 ID를 복제하지 않는다. 영화 상세정보는 MOMO Spring Boot 서버의 공개 GET API에서 조회한다.
 
-영화는 기생충, 인터스텔라, 극한직업, 라라랜드, 겨울왕국 5편이며 서로 다른 감상 관점의 리뷰 10건으로 구성한다. 해당 리뷰는 MOMO RAG의 로컬 시연을 위해 작성된 가상 감상이다. 실제 회원의 작성 내용이나 개인정보는 포함하지 않는다.
+## 수집·정제 과정
 
-## 정제 절차
+1. 원천 JSONL의 필수 리뷰 필드와 중복 ID를 확인한다.
+2. 영화 코드 5개를 중복 제거한다.
+3. MOMO 영화 상세 API를 영화 코드당 1회 호출한다.
+4. 응답의 movieCode가 요청한 코드와 같은지 검사한다.
+5. API의 제목과 Seed 영화 제목이 일치하는지 확인한다.
+6. 장르·감독·개봉일·줄거리·배우를 리뷰 문서 메타데이터로 결합한다.
+7. 정제 결과를 UTF-8 JSONL로 원자적으로 저장한다.
 
-1. JSONL을 한 줄씩 읽어 레코드 단위로 파싱한다.
-2. 리뷰 ID, 영화 코드, 영화명, 리뷰 제목, 본문, 출처의 필수 필드를 검사한다.
-3. 본문 앞뒤와 연속 공백을 정리한다.
-4. 리뷰 ID를 기준으로 중복을 제거한다.
-5. 영화명과 리뷰 제목을 결합해 검색용 제목을 만든다.
-6. 원본 MOMO Seed 코드 링크를 출처 메타데이터로 저장한다.
-7. 중복 제거 후 10건이 아니면 색인 입력 파일을 생성하지 않고 중단한다.
-
-## JSONL 스키마
+## JSONL 문서 구조
 
 | 필드 | 설명 |
 |---|---|
-| document_id | RAG 문서의 고유 ID |
-| review_id | MOMO 리뷰 식별자(시연 데이터 ID) |
-| movie_code | KOBIS 영화 코드 |
-| movie_title | 영화 제목 |
-| review_title | 리뷰 제목 |
-| title | 영화명과 리뷰 제목을 결합한 검색 제목 |
-| aspect | 감상 요소 |
-| text | 정제된 리뷰 본문 |
-| source | 원본 MOMO Seed 코드 URL |
+| document_id | RAG 문서 고유 ID |
+| review_id | MOMO RAG 시연 리뷰 ID |
+| movie_code | MOMO/KOBIS 영화 코드 |
+| movie_title | MOMO API에서 확인한 영화 제목 |
+| genre, director, release_date | 영화 상세 메타데이터 |
+| overview, actors | 영화 줄거리 및 출연진 |
+| title, text | 리뷰 제목과 본문 |
+| movie_metadata_text | 임베딩에 넣는 영화 정보 텍스트 |
+| source | 원본 MOMO 저장소 |
+| source_api | 실제 조회한 MOMO 상세 API 경로 |
 
-## 청킹 설계
+## 청킹·임베딩
 
-- 크기: 500자
+- 청크 크기: 500자
 - 오버랩: 80자
-- 분할 기준: 문장 부호와 공백 경계를 우선 탐색하고, 목표 크기의 65% 이후에서 가장 가까운 경계를 사용
-- 메타데이터: document_id, review_id, movie_code, movie_title, title, source, chunk_index 유지
-
-500자는 리뷰의 여러 감상 요소를 한 검색 단위에서 함께 다룰 수 있도록 MOMO RAG에서 사용한 초기 설정을 재사용한 값이다. 80자 overlap은 경계에서 문맥이 끊기는 것을 줄이기 위한 값이다. 최적값으로 단정하지 않고 평가 실험으로 조정한다.
-
-## 임베딩과 벡터 저장
-
-- 임베딩: OpenAI `text-embedding-3-small`
+- 문장 부호·공백 경계를 우선 분할
+- 임베딩 입력: 영화명 + 장르·감독·개봉일·줄거리 + 리뷰 제목 + 청크 본문
+- 모델: OpenAI text-embedding-3-small
 - 차원: 1536
-- 벡터 DB: MongoDB Atlas Vector Search
-- Database / Collection: `momo_rag_poc.review_chunks`
-- Vector index: `review_vector_index`
-- 유사도: cosine
 
-문서 본문과 검색 메타데이터, 임베딩 벡터를 같은 chunk 문서에 저장한다. `_id`는 문서 ID와 chunk 번호를 조합해 재색인 시 upsert한다.
+영화 정보만 따로 분리하지 않고 리뷰 청크에 함께 넣어 “우주를 다룬 SF”, “봉준호 감독 작품” 같은 질문도 영화 리뷰와 연결되도록 했다. 500/80은 초기 기준값이며 평가 실험으로 조정한다.
+
+## 벡터 저장
+
+- MongoDB Atlas
+- Database: worklaw_db
+- Collection: law_chunks
+- Index: vector_index
+- Vector path: embedding
+- Similarity: cosine
+
+리뷰 ID와 영화 코드를 유지해 검색 결과를 원본 시연 데이터 및 MOMO 영화 API와 연결한다.
