@@ -38,9 +38,25 @@ def request_json(url: str, params: dict[str, str]) -> dict[str, Any]:
         # 일부 오류 페이지는 응답 헤더의 문자셋이 잘못 지정되어 있으므로 실제 인코딩을 사용한다.
         from bs4 import BeautifulSoup
 
-        response.encoding = response.apparent_encoding or "utf-8"
-        message = BeautifulSoup(response.text, "html.parser").get_text(" ", strip=True)
+        # law.go.kr 오류 페이지는 EUC-KR/CP949로 내려오는 경우가 있어 후보 인코딩을 비교한다.
+        candidates = []
+        for encoding in ("utf-8", "euc-kr", "cp949"):
+            try:
+                decoded = response.content.decode(encoding)
+            except UnicodeDecodeError:
+                continue
+            plain = BeautifulSoup(decoded, "html.parser").get_text(" ", strip=True)
+            hangul_count = sum("\uac00" <= char <= "\ud7a3" for char in plain)
+            candidates.append((hangul_count, plain))
+        message = max(candidates, key=lambda item: item[0])[1] if candidates else response.content.decode("utf-8", errors="replace")
         # OC 인증키가 포함된 요청 URL은 로그에 출력하지 않는다.
+        if "미신청된 목록/본문" in message or "공동활용" in message and "신청" in message:
+            raise RuntimeError(
+                "국가법령정보센터가 본문 API 접근을 거부했습니다. "
+                "요청 형식은 JSON이 아니라 서버의 권한 안내 HTML입니다. "
+                "코드에서 우회할 수 없는 공동활용 승인/서비스 권한 문제입니다. "
+                f"서버 안내: {message[:900]}"
+            ) from error
         raise RuntimeError(
             "국가법령정보센터가 JSON 대신 오류 페이지를 반환했습니다. "
             f"HTTP {response.status_code}, 응답 내용: {message[:900]}"
