@@ -1,86 +1,95 @@
-# MOMO Movie Review RAG
+# MOMO Movie Search & Recommendation RAG
 
-MOMO 프로젝트의 영화 감상 리뷰를 자연어로 검색하고, 검색된 리뷰를 근거로 답변하는 RAG 웹서비스 POC입니다.
+기존 MOMO 영화 서비스의 API와 RAG 시연 리뷰를 활용해 자연어 영화 검색·추천을 제공하는 독립형 웹 POC입니다.
 
-## 프로젝트 범위
-- **도메인:** 영화 감상 리뷰 검색 및 비교
-- **대상 사용자:** MOMO에서 영화 리뷰를 읽고 감상 관점을 비교하려는 사용자
-- **입력:** “라라랜드의 음악과 스토리에 대한 서로 다른 평가는?”과 같은 자연어 질문
-- **출력:** 리뷰 근거를 바탕으로 한 한국어 답변, 영화명·리뷰 제목·리뷰 ID·원문 출처
-- **원천 데이터:** MOMO 저장소의 `MOMO-RAG/scripts/seed.py`에 정의된 영화 5편의 시연용 가상 리뷰 10건
-- **기술:** FastAPI, OpenAI Embeddings/Chat, MongoDB Atlas Vector Search, HTML/CSS/JavaScript
+## 프로젝트 정의
+- 도메인: 영화 정보 검색, 감상 리뷰 검색, 취향 기반 영화 추천
+- 대상 사용자: 영화 선택 전 작품 정보와 감상을 비교하려는 사용자
+- 입력: “음악이 좋고 여운이 남는 SF 영화를 추천해줘.”
+- 출력: 추천·검색 답변, 영화 정보, 리뷰 ID와 검색 근거
+- 기존 서비스 재사용: MOMO Spring API의 영화 상세·추천 API
+- AI: OpenAI Embeddings + GPT-4.1-mini
+- 벡터 DB: MongoDB Atlas Vector Search
+- 웹: FastAPI + HTML/CSS/JavaScript
 
-기존 MOMO RAG의 리뷰 데이터 계약과 Atlas/OpenAI 설계를 참고해 독립 POC로 구성했습니다. 실제 회원 리뷰 DB와 운영용 `momo_rag.review_chunks` 컬렉션은 건드리지 않습니다. 이 프로젝트는 별도 `momo_rag_poc.review_chunks` 컬렉션을 사용합니다.
+## 1. MOMO에서 재사용하는 기능
 
-## 1. 실행 환경
+| 기존 MOMO API | 사용 목적 |
+|---|---|
+| GET /api/movies/{movieCode} | 영화 제목, 장르, 감독, 개봉일, 줄거리, 배우 수집 |
+| GET /api/movies/recommendations | 박스오피스 이력 기반 추천 후보 |
+| GET /api/movies/recommendations?genre=코미디 | 장르별 추천 후보 |
+| MOMO-RAG/scripts/seed.py | 리뷰 시연 데이터 10건 |
 
-Conda 환경 `worklaw-rag` 또는 Python 3.12 이상 환경에서:
+영화 데이터와 추천 후보를 새로 만들지 않고 기존 MOMO API를 호출합니다. 리뷰는 기존 RAG Seed의 시연용 가상 감상 10건을 사용합니다. 실제 회원 리뷰 본문이나 작성자 정보는 복제하지 않습니다.
 
-```bash
-pip install -r requirements.txt
-```
+## 2. 실행 환경
 
-프로젝트 루트의 추적되지 않는 `.env`에 설정합니다.
+MOMO Spring Boot 백엔드를 먼저 실행합니다. 기본 주소는 http://localhost:8111 입니다.
 
-```dotenv
-OPENAI_API_KEY=실제_OpenAI_API_키
-MONGODB_URI=실제_MongoDB_Atlas_URI
-MONGODB_DATABASE=momo_rag_poc
-MONGODB_COLLECTION=review_chunks
-MONGODB_VECTOR_INDEX=review_vector_index
-MONGODB_VECTOR_PATH=embedding
-```
+    pip install -r requirements.txt
 
-실제 API 키와 MongoDB URI는 Git에 커밋하지 않습니다. 기존 MOMO 운영 DB/컬렉션을 지정하지 마세요.
+프로젝트 루트의 추적되지 않는 .env를 설정합니다.
 
-## 2. Atlas Vector Search 인덱스
+    OPENAI_API_KEY=실제_OpenAI_API_키
+    MOMO_API_BASE_URL=http://localhost:8111
+    MONGODB_URI=본인_MongoDB_Atlas_URI
+    MONGODB_DATABASE=worklaw_db
+    MONGODB_COLLECTION=law_chunks
+    MONGODB_VECTOR_INDEX=vector_index
+    MONGODB_VECTOR_PATH=embedding
 
-Atlas에서 Database `momo_rag_poc`, Collection `review_chunks`를 대상으로 Vector Search Index를 `review_vector_index` 이름으로 생성합니다. 인덱스 정의는 저장소의 `atlas-vector-index.json`을 사용합니다.
+실제 API 키와 MongoDB URI는 GitHub에 커밋하지 않습니다.
 
-## 3. 데이터 구축 및 색인
+## 3. Atlas Vector Search 인덱스
 
-```bash
-python scripts/collect_data.py
-python scripts/build_index.py
-```
+MongoDB Atlas에서 worklaw_db.law_chunks 컬렉션을 대상으로 vector_index를 생성합니다. 인덱스 정의는 atlas-vector-index.json을 사용합니다.
 
-- `data/raw/momo_reviews.jsonl`: MOMO RAG Seed에서 가져온 가상 영화 리뷰 10건
-- `scripts/collect_data.py`: 필수 필드 검증, 공백 정리, 중복 제거 및 출처 메타데이터 정규화
-- `data/processed/momo_reviews.jsonl`: 검색 색인의 입력 문서
-- `app/rag/chunker.py`: 리뷰 본문을 500자 단위, 80자 overlap으로 청킹
-- `app/rag/embedder.py`: OpenAI `text-embedding-3-small` 임베딩
-- `app/rag/vector_store.py`: MongoDB Atlas Vector Search 저장·검색
+## 4. 데이터 수집 및 색인
 
-## 4. 웹서비스
+    python scripts/collect_data.py
+    python scripts/build_index.py
 
-```bash
-uvicorn app.main:app --reload
-```
+수집 과정:
+1. MOMO RAG Seed의 영화 리뷰 10건을 읽는다.
+2. 영화 코드별로 MOMO GET /api/movies/{movieCode}를 호출한다.
+3. 영화 상세 응답의 제목·장르·감독·개봉일·줄거리·배우를 리뷰 문서에 결합한다.
+4. 필수 필드와 영화 코드·제목 일치 여부를 확인하고 JSONL로 저장한다.
+5. 리뷰 본문을 500자 단위, 80자 overlap으로 청킹한다.
+6. 영화 메타데이터와 리뷰 제목을 포함해 text-embedding-3-small으로 임베딩한다.
+7. MongoDB Atlas에 저장한다.
 
-브라우저에서 `http://127.0.0.1:8000`을 엽니다.
+## 5. 웹서비스 실행
 
-- `GET /api/health`: MongoDB 연결, 색인 청크 수, API 설정 상태
-- `POST /api/ask`: 자연어 질문 → 관련 리뷰 검색 → 근거 기반 답변
-- `GET /docs`: FastAPI API 문서
+    uvicorn app.main:app --reload
 
-## 5. 평가와 개선
+브라우저: http://127.0.0.1:8000
 
-```bash
-pytest -q
-python scripts/evaluate.py
-```
+- GET /api/health: MongoDB·색인·OpenAI 설정 상태
+- GET /api/recommendations?genre=코미디: MOMO 기존 추천 API 프록시
+- POST /api/ask: 자연어 질문 → 벡터 검색 → 근거 기반 답변
+- GET /docs: API 문서
 
-8개 평가 질문에 기대 리뷰 ID를 라벨링했습니다. Recall@K와 MRR@K로 검색 결과를 평가합니다. 개선 실험은 동일 평가셋에서 청킹 크기·overlap 또는 top-k 중 한 항목만 변경하고 재색인한 뒤 비교합니다. 실제 점수는 실행 결과를 기록하며 미리 만들어 넣지 않습니다.
+추천 후보는 MOMO의 박스오피스 추천 로직을 그대로 사용합니다. AI 검색은 질문과 가까운 영화 리뷰·상세정보를 찾아 추천 이유를 자연어로 설명합니다.
 
-## 데이터 범위와 한계
-- 현재 데이터는 MOMO RAG 시연용으로 작성한 가상 감상 10건이며, 실제 사용자 리뷰 전체를 대표하지 않습니다.
-- 5편의 영화와 제한된 관점만 포함하므로 다른 영화 질문에는 답할 근거가 없습니다.
-- 리뷰는 주관적 감상이며 영화의 객관적 사실이나 평론가의 합의가 아닙니다.
-- 평가 질문 8개는 소규모 내부 평가셋으로 일반화에 한계가 있습니다.
-- OpenAI 임베딩 및 답변 생성에는 API 사용료가 발생할 수 있습니다.
-- MOMO 본 서비스의 인증·권한·MySQL과 이 독립형 POC는 연결되어 있지 않습니다.
+## 6. 평가 및 개선
+
+    pytest -q
+    python scripts/evaluate.py
+
+8개 평가 질문에 기대 리뷰 ID를 라벨링하고 Recall@K, MRR@K를 계산합니다. 개선 실험은 동일 평가셋에서 청킹 크기와 overlap을 변경하고 재색인한 뒤 결과를 비교합니다. 실행하지 않은 수치를 미리 기록하지 않습니다.
+
+## 한계
+- 리뷰는 MOMO RAG Seed의 시연용 가상 감상 10건이며 실제 회원 리뷰를 대표하지 않습니다.
+- 추천 후보의 품질은 MOMO의 박스오피스 이력·장르 필터 정책에 영향을 받습니다.
+- 현재 평가셋은 8개 질문으로 작아 일반화에 한계가 있습니다.
+- 리뷰 근거는 주관적 감상이며 영화에 관한 객관적 사실의 증거가 아닙니다.
+- MOMO 백엔드가 실행 중이어야 영화 상세 수집과 추천 API 프록시를 사용할 수 있습니다.
+- OpenAI 및 MongoDB Atlas 호출에는 네트워크와 사용료가 필요합니다.
+- 독립 POC이므로 MOMO 로그인·회원별 권한·MySQL 원본 DB를 직접 수정하지 않습니다.
 
 ## 원본 프로젝트
-- [MOMO](https://github.com/madison-yoon/MOMO)
-- [MOMO RAG 구현 문서](https://github.com/madison-yoon/MOMO/blob/main/docs/RAG.md)
-- [MOMO RAG Seed 데이터](https://github.com/madison-yoon/MOMO/blob/main/MOMO-RAG/scripts/seed.py)
+- https://github.com/madison-yoon/MOMO
+- https://github.com/madison-yoon/MOMO/blob/main/docs/RAG.md
+- https://github.com/madison-yoon/MOMO/blob/main/MOMO-RAG/scripts/seed.py
+- https://github.com/madison-yoon/MOMO/blob/main/momo-backend/src/main/java/com/momo/backend/controller/MovieController.java
