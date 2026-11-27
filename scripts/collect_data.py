@@ -1,6 +1,7 @@
 """국가법령정보센터 OPEN API로 현행 근로기준법 조문을 수집한다."""
 import json
 import re
+import sys
 from pathlib import Path
 from typing import Any
 
@@ -8,16 +9,19 @@ import requests
 
 # 스크립트를 직접 실행해도 프로젝트 루트의 app 패키지를 찾도록 경로를 등록한다.
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
-if str(PROJECT_ROOT) not in __import__("sys").path:
-    __import__("sys").path.insert(0, str(PROJECT_ROOT))
+if str(PROJECT_ROOT) not in sys.path:
+    sys.path.insert(0, str(PROJECT_ROOT))
 
 from app.config import settings
 
 API_BASE_URL = "https://www.law.go.kr/DRF"
 LIST_URL = f"{API_BASE_URL}/lawSearch.do"
 DETAIL_URL = f"{API_BASE_URL}/lawService.do"
-OUTPUT_PATH = Path(__file__).resolve().parents[1] / "data" / "processed" / "labor_standards_act.jsonl"
+OUTPUT_PATH = PROJECT_ROOT / "data" / "processed" / "labor_standards_act.jsonl"
 SOURCE_URL = "https://www.law.go.kr/법령/근로기준법"
+
+LAW_NAME_KEYS = ("법령명_한글", "법령명한글", "법령명", "법령명_한글")
+LAW_ID_KEYS = ("법령ID", "법령아이디", "법령 ID")
 
 
 def request_json(url: str, params: dict[str, str]) -> dict[str, Any]:
@@ -31,10 +35,12 @@ def request_json(url: str, params: dict[str, str]) -> dict[str, Any]:
     try:
         payload = response.json()
     except ValueError as error:
-        # API 오류 페이지의 안내 문구만 추출한다. 요청 URL은 OC 인증키가 포함될 수 있어 출력하지 않는다.
+        # 일부 오류 페이지는 응답 헤더의 문자셋이 잘못 지정되어 있으므로 실제 인코딩을 사용한다.
         from bs4 import BeautifulSoup
 
+        response.encoding = response.apparent_encoding or "utf-8"
         message = BeautifulSoup(response.text, "html.parser").get_text(" ", strip=True)
+        # OC 인증키가 포함된 요청 URL은 로그에 출력하지 않는다.
         raise RuntimeError(
             "국가법령정보센터가 JSON 대신 오류 페이지를 반환했습니다. "
             f"HTTP {response.status_code}, 응답 내용: {message[:900]}"
@@ -42,8 +48,50 @@ def request_json(url: str, params: dict[str, str]) -> dict[str, Any]:
 
     if not isinstance(payload, dict):
         raise RuntimeError(f"예상하지 못한 API 응답 형식입니다: {type(payload).__name__}")
-
     return payload
+
+
+def normalize_text(value: Any) -> str:
+    if isinstance(value, list):
+        return " ".join(filter(None, (normalize_text(item) for item in value)))
+    if isinstance(value, dict):
+        return " ".join(filter(None, (normalize_text(item) for item in value.values())))
+    if value is None:
+        return ""
+    return re.sub(r"\\s+", " ", str(value)).strip()
+
+
+def find_law_record(data: Any, law_name: str) -> dict[str, Any] | None:
+    """목록 응답에서 이름과 법령 ID가 같은 레코드에 있는 법령만 선택한다."""
+    expected_name = re.sub(r"\\s+", "", law_name)
+
+    def walk(node: Any) -> dict[str, Any] | None:
+        if isinstance(node, dict):
+            name = next(
+                (node[key] for key in LAW_NAME_KEYS if node.get(key) not in (None, "")),
+                None,
+            )
+            law_id = next(
+                (node[key] for key in LAW_ID_KEYS if node.get(key) not in (None, "")),
+                None,
+            )
+            if name is not None and law_id is not None:
+                normalized_name = re.sub(r"\\s+", "", normalize_text(name))
+                if normalized_name == expected_name:
+                    return node
+
+            for value in node.values():
+                found = walk(value)
+                if found is not None:
+                    return found
+        elif isinstance(node, list):
+            for item in node:
+                found = walk(item)
+                if found is not None:
+                    return found
+        return None
+
+    return walk(data)
 
 
 def find_value(data: Any, candidates: tuple[str, ...]) -> Any:
@@ -84,18 +132,9 @@ def find_article_nodes(data: Any) -> list[dict[str, Any]]:
     return found
 
 
-def normalize_text(value: Any) -> str:
-    if isinstance(value, list):
-        return "\n".join(filter(None, (normalize_text(item) for item in value)))
-    if isinstance(value, dict):
-        return "\n".join(filter(None, (normalize_text(item) for item in value.values())))
-    if value is None:
-        return ""
-    return re.sub(r"\s+", " ", str(value)).strip()
-
-
 def extract_articles(payload: dict[str, Any]) -> list[dict[str, Any]]:
     nodes = find_article_nodes(payload)
+    effective_date = normalize_text(find_value(payload, ("시행일자", "시행일")))
     records: dict[str, dict[str, str]] = {}
 
     for node in nodes:
@@ -122,18 +161,16 @@ def extract_articles(payload: dict[str, Any]) -> list[dict[str, Any]]:
         records[article_id] = {
             "article_id": article_id,
             "title": f"{article_id}({title_text})",
-            "text": f"{article_id}({title_text})\n{article_text}",
+            "text": f"{article_id}({title_text})\\n{article_text}",
             "source": SOURCE_URL,
             "law_name": "근로기준법",
-            "effective_date": normalize_text(
-                find_value(payload, ("시행일자", "시행일"))
-            ),
+            "effective_date": effective_date,
         }
 
     return sorted(
         records.values(),
         key=lambda item: tuple(
-            int(part) for part in re.findall(r"\d+", item["article_id"])
+            int(part) for part in re.findall(r"\\d+", item["article_id"])
         ),
     )
 
@@ -146,29 +183,47 @@ def main():
 
     listing = request_json(
         LIST_URL,
-        {"OC": settings.law_api_oc, "target": "eflaw", "type": "JSON",
-         "query": "근로기준법", "display": "100", "page": "1"},
+        {
+            "OC": settings.law_api_oc,
+            "target": "eflaw",
+            "type": "JSON",
+            "query": "근로기준법",
+            "display": "100",
+            "page": "1",
+        },
     )
-    # 공식 활용방법에 따라 목록의 법령일련번호를 본문 조회의 MST로 전달한다.
-    law_mst = find_value(listing, ("법령일련번호", "법령 일련번호"))
-    effective_date = find_value(listing, ("시행일자", "시행일"))
-    if law_mst is None or effective_date is None:
-        message = find_value(listing, ("resultMsg", "메시지", "오류메시지"))
+
+    # 목록 전체에서 첫 번째 ID를 가져오지 않고, 근로기준법 이름과 ID가 함께 있는 항목을 찾는다.
+    law_record = find_law_record(listing, "근로기준법")
+    if law_record is None:
         raise RuntimeError(
-            "현행법령 목록에서 법령일련번호 또는 시행일자를 찾지 못했습니다. "
-            f"API 응답 메시지: {message or str(listing)[:700]}"
+            "현행법령 목록에서 법령명 '근로기준법'과 법령ID가 함께 있는 항목을 찾지 못했습니다. "
+            f"목록 응답 구조: {str(listing)[:900]}"
         )
 
+    law_id = find_value(law_record, LAW_ID_KEYS)
+    if law_id is None:
+        raise RuntimeError("근로기준법 목록 항목에 법령ID가 없습니다.")
+
+    # 공식 본문 API: ID를 사용하면 현행 본문을 조회하며 efYd는 전달하지 않는다.
     detail = request_json(
         DETAIL_URL,
         {
             "OC": settings.law_api_oc,
             "target": "eflaw",
             "type": "JSON",
-            "MST": str(law_mst),
-            "efYd": str(effective_date),
+            "ID": str(law_id),
         },
     )
+
+    returned_law_name = normalize_text(
+        find_value(detail, ("법령명_한글", "법령명한글", "법령명"))
+    )
+    if returned_law_name and re.sub(r"\\s+", "", returned_law_name) != "근로기준법":
+        raise RuntimeError(
+            f"요청한 법령과 다른 본문이 반환되었습니다: {returned_law_name}"
+        )
+
     articles = extract_articles(detail)
     if len(articles) < 20:
         message = find_value(detail, ("resultMsg", "메시지", "오류메시지"))
@@ -181,12 +236,12 @@ def main():
     temp_path = OUTPUT_PATH.with_suffix(".jsonl.tmp")
     with temp_path.open("w", encoding="utf-8") as file:
         for article in articles:
-            file.write(json.dumps(article, ensure_ascii=False) + "\n")
+            file.write(json.dumps(article, ensure_ascii=False) + "\\n")
     temp_path.replace(OUTPUT_PATH)
 
     effective_date = articles[0].get("effective_date") or "API 응답 미제공"
     print(f"수집 완료: {len(articles)}개 조문")
-    print(f"법령 일련번호(MST): {law_mst}")
+    print(f"법령 ID: {law_id}")
     print(f"시행일자: {effective_date}")
     print(f"저장: {OUTPUT_PATH}")
     print("샘플:", ", ".join(item["article_id"] for item in articles[:5]))
