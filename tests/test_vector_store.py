@@ -1,7 +1,7 @@
 from app.rag.vector_store import query_chunks, upsert_chunks
 
 
-def test_query_uses_configured_index_and_returns_source_metadata(monkeypatch):
+def test_query_uses_configured_index_and_returns_movie_source_metadata(monkeypatch):
     from app.config import settings
     from app.rag import vector_store
 
@@ -11,10 +11,14 @@ def test_query_uses_configured_index_and_returns_source_metadata(monkeypatch):
         def aggregate(self, pipeline):
             self.pipeline = pipeline
             return [{
-                "text": "근로조건을 명시해야 한다.",
-                "article_id": "제17조",
-                "title": "근로조건의 명시",
-                "source": "https://law.go.kr/example",
+                "text": "주인공의 선택과 성장에 관한 리뷰",
+                "document_id": "review-001",
+                "review_id": "review-001",
+                "movie_code": "MOV-001",
+                "movie_title": "테스트 영화",
+                "genre": "드라마",
+                "title": "성장에 관한 감상",
+                "source": "MOMO-RAG/scripts/seed.py",
                 "chunk_index": 0,
                 "relevance_score": 0.91,
             }]
@@ -31,7 +35,10 @@ def test_query_uses_configured_index_and_returns_source_metadata(monkeypatch):
     assert collection.pipeline[0]["$vectorSearch"]["index"] == "test_vector"
     assert collection.pipeline[0]["$vectorSearch"]["path"] == "embedding"
     assert collection.pipeline[0]["$vectorSearch"]["limit"] == 2
-    assert results[0]["metadata"]["article_id"] == "제17조"
+    assert results[0]["metadata"]["movie_code"] == "MOV-001"
+    assert results[0]["metadata"]["movie_title"] == "테스트 영화"
+    assert results[0]["metadata"]["genre"] == "드라마"
+    assert results[0]["metadata"]["source"] == "MOMO-RAG/scripts/seed.py"
     assert results[0]["score"] == 0.91
 
 
