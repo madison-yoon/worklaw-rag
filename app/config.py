@@ -9,6 +9,7 @@ class Settings(BaseSettings):
     embedding_dimensions: int = 1536
     chunk_size: int = 500
     chunk_overlap: int = 80
+    embedding_batch_size: int = 100
     retrieval_top_k: int = 5
     vector_num_candidates_multiplier: int = 10
 
