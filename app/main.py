@@ -32,8 +32,9 @@ def health():
     database = check_connection()
     api_configured = bool(settings.openai_api_key)
     return {"status": "ok" if database["connected"] else "degraded",
-            "mongodb_connected": database["connected"], "indexed_chunks": database["document_count"],
-            "mongodb_error": database["error"], "api_key_configured": api_configured,
+            "vector_db": "ChromaDB", "vector_db_connected": database["connected"],
+            "indexed_chunks": database["document_count"], "vector_db_error": database["error"],
+            "api_key_configured": api_configured,
             "momo_api_base_url": settings.momo_api_base_url,
             "ready": database["connected"] and database["document_count"] > 0 and api_configured}
 
@@ -65,7 +66,7 @@ def ask(request: AskRequest):
         raise HTTPException(status_code=503, detail="OPENAI_API_KEY를 프로젝트 루트의 .env에 설정하세요.")
     database = check_connection()
     if not database["connected"]:
-        raise HTTPException(status_code=503, detail="MongoDB 연결과 Atlas Network Access를 확인하세요.")
+        raise HTTPException(status_code=503, detail="로컬 ChromaDB 저장소를 확인하세요.")
     if database["document_count"] == 0:
         raise HTTPException(status_code=503, detail="검색 데이터가 없습니다. 수집과 인덱싱을 먼저 실행하세요.")
 
