@@ -1,29 +1,48 @@
 from functools import lru_cache
 
-import chromadb
+from pymongo import MongoClient, ReplaceOne
+from pymongo.errors import PyMongoError
 
 from app.config import settings
 
 
 @lru_cache(maxsize=1)
-def _get_client():
-    return chromadb.PersistentClient(path=settings.chroma_persist_directory)
+def _get_client() -> MongoClient:
+    if not settings.mongodb_uri.strip():
+        raise RuntimeError("MONGODB_URI가 .env에 설정되지 않았습니다.")
+    return MongoClient(
+        settings.mongodb_uri,
+        serverSelectionTimeoutMS=settings.mongodb_server_selection_timeout_ms,
+        appname="momo-movie-rag",
+    )
 
 
 @lru_cache(maxsize=1)
 def _get_collection():
-    return _get_client().get_or_create_collection(
-        name=settings.chroma_collection,
-        metadata={"hnsw:space": "cosine"},
-    )
+    client = _get_client()
+    return client[settings.mongodb_database][settings.mongodb_collection]
 
 
 def check_connection() -> dict:
+    """Atlas 연결과 대상 컬렉션의 문서 수를 확인한다."""
     try:
-        count = _get_collection().count()
-        return {"connected": True, "document_count": count, "error": None}
+        _get_client().admin.command("ping")
+        count = _get_collection().count_documents({})
+        return {
+            "connected": True,
+            "document_count": count,
+            "database": settings.mongodb_database,
+            "collection": settings.mongodb_collection,
+            "error": None,
+        }
     except Exception as exc:
-        return {"connected": False, "document_count": 0, "error": type(exc).__name__}
+        return {
+            "connected": False,
+            "document_count": 0,
+            "database": settings.mongodb_database,
+            "collection": settings.mongodb_collection,
+            "error": f"{type(exc).__name__}: {str(exc)[:300]}",
+        }
 
 
 def upsert_chunks(chunks: list[dict], embeddings: list[list[float]]) -> None:
@@ -32,10 +51,7 @@ def upsert_chunks(chunks: list[dict], embeddings: list[list[float]]) -> None:
     if len(chunks) != len(embeddings):
         raise ValueError("chunk와 embedding 개수가 다릅니다.")
 
-    ids = []
-    documents = []
-    metadatas = []
-    vectors = []
+    operations = []
     metadata_fields = (
         "document_id", "review_id", "movie_code", "movie_title", "genre",
         "director", "release_date", "overview", "title", "source",
@@ -45,21 +61,27 @@ def upsert_chunks(chunks: list[dict], embeddings: list[list[float]]) -> None:
     for chunk, embedding in zip(chunks, embeddings):
         if len(embedding) != settings.embedding_dimensions:
             raise ValueError(f"임베딩 차원이 올바르지 않습니다: {len(embedding)}")
-        ids.append(str(chunk["id"]))
-        documents.append(str(chunk["text"]))
-        vectors.append(embedding)
-        metadata = {key: chunk.get(key) for key in metadata_fields}
-        metadatas.append({
-            key: value if value is not None else ""
-            for key, value in metadata.items()
-        })
+        chunk_id = str(chunk.get("id", "")).strip()
+        if not chunk_id:
+            raise ValueError("각 chunk에는 고유한 id가 필요합니다.")
 
-    _get_collection().upsert(
-        ids=ids,
-        documents=documents,
-        embeddings=vectors,
-        metadatas=metadatas,
-    )
+        document = {
+            "_id": chunk_id,
+            "text": str(chunk["text"]),
+            "embedding": [float(value) for value in embedding],
+            "source_system": "momo-movie-rag",
+        }
+        for key in metadata_fields:
+            value = chunk.get(key)
+            if value is not None:
+                document[key] = value
+
+        operations.append(ReplaceOne({"_id": chunk_id}, document, upsert=True))
+
+    try:
+        _get_collection().bulk_write(operations, ordered=False)
+    except PyMongoError as exc:
+        raise RuntimeError(f"MongoDB Atlas 벡터 저장 실패: {exc}") from exc
 
 
 def query_chunks(embedding: list[float], top_k: int | None = None) -> list[dict]:
@@ -68,41 +90,67 @@ def query_chunks(embedding: list[float], top_k: int | None = None) -> list[dict]
         raise ValueError(f"질문 임베딩 차원이 올바르지 않습니다: {len(embedding)}")
     if result_limit < 1:
         raise ValueError("검색 결과 개수는 1 이상이어야 합니다.")
+    if not settings.mongodb_vector_index or not settings.mongodb_vector_path:
+        raise RuntimeError("MongoDB Vector Search index와 vector path 설정을 확인하세요.")
 
-    result = _get_collection().query(
-        query_embeddings=[embedding],
-        n_results=result_limit,
-        include=["documents", "metadatas", "distances"],
-    )
+    pipeline = [
+        {
+            "$vectorSearch": {
+                "index": settings.mongodb_vector_index,
+                "path": settings.mongodb_vector_path,
+                "queryVector": [float(value) for value in embedding],
+                "numCandidates": max(result_limit, result_limit * settings.vector_num_candidates_multiplier),
+                "limit": result_limit,
+            }
+        },
+        {
+            "$project": {
+                "_id": 0,
+                "text": 1,
+                "metadata": {
+                    "document_id": "$document_id",
+                    "review_id": "$review_id",
+                    "movie_code": "$movie_code",
+                    "movie_title": "$movie_title",
+                    "genre": "$genre",
+                    "director": "$director",
+                    "release_date": "$release_date",
+                    "overview": "$overview",
+                    "title": "$title",
+                    "source": "$source",
+                    "source_api": "$source_api",
+                    "chunk_index": "$chunk_index",
+                },
+                "score": {"$meta": "vectorSearchScore"},
+            }
+        },
+    ]
 
-    documents = result.get("documents", [[]])[0]
-    metadatas = result.get("metadatas", [[]])[0]
-    distances = result.get("distances", [[]])[0]
+    try:
+        rows = list(_get_collection().aggregate(pipeline))
+    except PyMongoError as exc:
+        raise RuntimeError(
+            "MongoDB Atlas Vector Search 실패: Atlas Search 인덱스 이름·필드 경로·차원(1536)을 확인하세요. "
+            f"원인: {exc}"
+        ) from exc
+
     return [
         {
-            "text": text,
-            "metadata": metadata or {},
-            "score": 1.0 - distance if distance is not None else None,
+            "text": row.get("text", ""),
+            "metadata": {key: value for key, value in (row.get("metadata") or {}).items() if value is not None},
+            "score": row.get("score"),
         }
-        for text, metadata, distance in zip(documents, metadatas, distances)
+        for row in rows
     ]
 
 
 def clear_collection() -> None:
-    """현재 컬렉션의 모든 레코드를 ID 기준으로 안전하게 비운다."""
-    collection = _get_collection()
-
-    # ChromaDB 1.x의 delete()는 인자 없는 전체 삭제를 지원하지 않는다.
-    # get()으로 ID만 확보한 뒤, 요청 크기를 나눠 명시적으로 삭제한다.
-    existing_ids = collection.get()["ids"]
-    if not existing_ids:
-        return
-
-    batch_size = 500
-    for start in range(0, len(existing_ids), batch_size):
-        batch_ids = existing_ids[start:start + batch_size]
-        collection.delete(ids=batch_ids)
+    """RAG 전용 컬렉션을 비운다. 대상 컬렉션은 .env의 MONGODB_COLLECTION이다."""
+    try:
+        _get_collection().delete_many({})
+    except PyMongoError as exc:
+        raise RuntimeError(f"MongoDB Atlas 컬렉션 초기화 실패: {exc}") from exc
 
 
 def collection_count() -> int:
-    return _get_collection().count()
+    return _get_collection().count_documents({})
