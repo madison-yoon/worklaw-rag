@@ -9,7 +9,7 @@ if str(PROJECT_ROOT) not in sys.path:
 from app.config import settings
 from app.rag.chunker import split_documents
 from app.rag.embedder import embed_texts
-from app.rag.vector_store import upsert_chunks
+from app.rag.vector_store import clear_collection, upsert_chunks
 
 SOURCE = PROJECT_ROOT / "data" / "processed" / "momo_reviews.jsonl"
 
@@ -25,6 +25,7 @@ def main():
         raise ValueError(f"MOMO 시연 리뷰 10건이 필요합니다. 현재 {len(documents)}건입니다.")
 
     chunks = split_documents(documents, settings.chunk_size, settings.chunk_overlap)
+    clear_collection()
     for start in range(0, len(chunks), settings.embedding_batch_size):
         batch = chunks[start:start + settings.embedding_batch_size]
         vectors = embed_texts([item["embedding_text"] for item in batch])
