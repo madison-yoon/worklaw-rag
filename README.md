@@ -10,7 +10,7 @@ MOMO 프로젝트의 영화 감상 리뷰를 자연어로 검색하고, 검색�
 - **원천 데이터:** MOMO 저장소의 `MOMO-RAG/scripts/seed.py`에 정의된 영화 5편의 시연용 가상 리뷰 10건
 - **기술:** FastAPI, OpenAI Embeddings/Chat, MongoDB Atlas Vector Search, HTML/CSS/JavaScript
 
-이 POC는 MOMO에 이미 구현된 RAG의 데이터 계약과 설계(리뷰 단위 문서, 500자/80자 청킹, text-embedding-3-small, Atlas Vector Search, GPT-4.1-mini)를 참고해 독립 실행형 데모로 구성했습니다. MOMO의 실제 회원 리뷰 DB를 복제하거나 개인정보를 수집하지 않습니다.
+기존 MOMO RAG의 리뷰 데이터 계약과 Atlas/OpenAI 설계를 참고해 독립 POC로 구성했습니다. 실제 회원 리뷰 DB와 운영용 `momo_rag.review_chunks` 컬렉션은 건드리지 않습니다. 이 프로젝트는 별도 `momo_rag_poc.review_chunks` 컬렉션을 사용합니다.
 
 ## 1. 실행 환경
 
@@ -25,30 +25,17 @@ pip install -r requirements.txt
 ```dotenv
 OPENAI_API_KEY=실제_OpenAI_API_키
 MONGODB_URI=실제_MongoDB_Atlas_URI
-MONGODB_DATABASE=momo_rag
+MONGODB_DATABASE=momo_rag_poc
 MONGODB_COLLECTION=review_chunks
 MONGODB_VECTOR_INDEX=review_vector_index
 MONGODB_VECTOR_PATH=embedding
 ```
 
-실제 API 키와 MongoDB URI는 Git에 커밋하지 않습니다.
+실제 API 키와 MongoDB URI는 Git에 커밋하지 않습니다. 기존 MOMO 운영 DB/컬렉션을 지정하지 마세요.
 
 ## 2. Atlas Vector Search 인덱스
 
-Database `momo_rag`, Collection `review_chunks`를 사용합니다. Atlas에서 Vector Search Index를 `review_vector_index` 이름으로 생성하고 다음 정의를 적용합니다.
-
-```json
-{
-  "fields": [
-    {
-      "type": "vector",
-      "path": "embedding",
-      "numDimensions": 1536,
-      "similarity": "cosine"
-    }
-  ]
-}
-```
+Atlas에서 Database `momo_rag_poc`, Collection `review_chunks`를 대상으로 Vector Search Index를 `review_vector_index` 이름으로 생성합니다. 인덱스 정의는 저장소의 `atlas-vector-index.json`을 사용합니다.
 
 ## 3. 데이터 구축 및 색인
 
@@ -90,8 +77,8 @@ python scripts/evaluate.py
 - 5편의 영화와 제한된 관점만 포함하므로 다른 영화 질문에는 답할 근거가 없습니다.
 - 리뷰는 주관적 감상이며 영화의 객관적 사실이나 평론가의 합의가 아닙니다.
 - 평가 질문 8개는 소규모 내부 평가셋으로 일반화에 한계가 있습니다.
-- OpenAI 임베딩·답변 생성에는 API 비용이 발생할 수 있습니다.
-- MOMO 원본 서비스의 인증·권한·리뷰 CRUD와 이 독립형 POC는 연결되어 있지 않습니다.
+- OpenAI 임베딩 및 답변 생성에는 API 사용료가 발생할 수 있습니다.
+- MOMO 본 서비스의 인증·권한·MySQL과 이 독립형 POC는 연결되어 있지 않습니다.
 
 ## 원본 프로젝트
 - [MOMO](https://github.com/madison-yoon/MOMO)
