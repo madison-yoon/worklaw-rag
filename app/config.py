@@ -13,6 +13,7 @@ class Settings(BaseSettings):
     retrieval_top_k: int = 5
     vector_num_candidates_multiplier: int = 10
 
+    law_api_oc: str = Field(default="", validation_alias=AliasChoices("LAW_API_OC", "law_api_oc"))
     mongodb_uri: str = Field(
         default="",
         validation_alias=AliasChoices("MONGODB_URI", "MONGO_URI"),
