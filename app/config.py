@@ -1,4 +1,3 @@
-from pydantic import Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -14,7 +13,7 @@ class Settings(BaseSettings):
     vector_num_candidates_multiplier: int = 10
 
     mongodb_uri: str = ""
-    mongodb_database: str = "momo_rag"
+    mongodb_database: str = "momo_rag_poc"
     mongodb_collection: str = "review_chunks"
     mongodb_vector_index: str = "review_vector_index"
     mongodb_vector_path: str = "embedding"
