@@ -2,16 +2,17 @@
 <html lang="ko">
 <head>
   <meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>WorkLaw | 근로기준법 검색 도우미</title><link rel="stylesheet" href="/static/style.css">
+  <title>MOMO | 영화 리뷰 AI 검색</title><link rel="stylesheet" href="/static/style.css">
 </head>
 <body>
   <main class="shell">
-    <header><div class="brand-mark">W</div><div><p class="eyebrow">WORKER KNOWLEDGE BASE</p><h1>WorkLaw</h1></div><span class="status"><i></i> 법령 검색</span></header>
-    <section class="hero"><p class="eyebrow">LABOR STANDARDS ACT · RAG ASSISTANT</p><h2>일하는 기준을,<br><em>근거부터</em> 확인하세요.</h2><p class="intro">근로기준법에 관해 질문하면 검색된 조문과 근거를 바탕으로 설명합니다.</p>
-      <div class="search-box"><textarea id="question" rows="2" placeholder="궁금한 근로기준법 내용을 자연어로 질문하세요."></textarea><button id="ask">질문하기 <span>→</span></button></div>
+    <header><div class="brand-mark">M</div><div><p class="eyebrow">MOVIE MEMORY · REVIEW ARCHIVE</p><h1>MOMO RAG</h1></div><span class="status"><i></i> 리뷰 검색</span></header>
+    <section class="hero"><p class="eyebrow">MOVIE REVIEW · RAG ASSISTANT</p><h2>영화에 남긴 감상을,<br><em>근거와 함께</em> 찾아보세요.</h2><p class="intro">MOMO의 영화 리뷰를 의미 기반으로 검색하고, 실제 리뷰 내용을 근거로 답변합니다.</p>
+      <div class="search-box"><textarea id="question" rows="2" placeholder="예: 인터스텔라에서 음악과 가족 서사를 좋게 평가한 리뷰는?"></textarea><button id="ask">리뷰 검색 <span>→</span></button></div>
+      <div class="suggestions"><button data-q="기생충의 연기와 촬영을 긍정적으로 평가한 리뷰는?">기생충 리뷰</button><button data-q="라라랜드의 음악과 스토리에 대한 서로 다른 평가는?">라라랜드 비교</button><button data-q="겨울왕국의 음악과 색채에 대한 감상은?">겨울왕국 감상</button></div>
     </section>
-    <section id="result" class="result" aria-live="polite"><div class="empty"><span>01</span><p>질문을 입력하면 답변과 관련 조문이 여기에 표시됩니다.</p></div></section>
-    <footer><span>국가법령정보센터 근로기준법 기반</span><span>학습·정보 탐색용 · 법률 자문 아님</span></footer>
+    <section id="result" class="result" aria-live="polite"><div class="empty"><span>01</span><p>질문을 입력하면 답변과 검색된 리뷰 근거가 표시됩니다.</p></div></section>
+    <footer><span>MOMO 프로젝트 시연용 리뷰 데이터</span><span>리뷰 감상 검색 · 객관적 평론이나 사실 판정이 아님</span></footer>
   </main><script src="/static/app.js"></script>
 </body>
 </html>
