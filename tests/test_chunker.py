@@ -12,6 +12,7 @@ def test_chunker_keeps_momo_review_metadata():
     assert len(chunks) > 1
     assert all(chunk["review_id"] == "momo-demo-001" for chunk in chunks)
     assert all(chunk["movie_title"] == "기생충" for chunk in chunks)
+    assert all("영화: 기생충" in chunk["embedding_text"] for chunk in chunks)
     assert all(chunk["source"].startswith("https://github.com/") for chunk in chunks)
     assert all(len(chunk["text"]) <= 100 for chunk in chunks)
 
