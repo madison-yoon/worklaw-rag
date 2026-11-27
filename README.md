@@ -9,10 +9,26 @@
 - 출력: 추천·검색 답변, 영화 정보, 리뷰 ID와 검색 근거
 - 기존 서비스 재사용: MOMO Spring API의 영화 상세·추천 API
 - AI: OpenAI Embeddings + GPT-4.1-mini
-- 벡터 DB: MongoDB Atlas Vector Search
+- 벡터 DB: ChromaDB (로컬 영구 저장)
 - 웹: FastAPI + HTML/CSS/JavaScript
 
-## 1. MOMO에서 재사용하는 기능
+## 1. 아키텍처와 데이터 흐름
+
+```mermaid
+flowchart TD
+    A[MOMO Spring API + 시연 리뷰 10건] --> B[수집 및 정제 JSONL]
+    B --> C[500자 청킹 / 80자 Overlap]
+    C --> D[OpenAI text-embedding-3-small]
+    D --> E[ChromaDB 로컬 벡터 저장소]
+    U[사용자 자연어 질문] --> Q[FastAPI]
+    Q --> QE[질문 임베딩]
+    QE --> E
+    E --> R[유사 리뷰 Top-K 검색]
+    R --> L[GPT-4.1-mini]
+    L --> O[답변 + 리뷰 근거 출처]
+```
+
+## 2. MOMO에서 재사용하는 기능
 
 | 기존 MOMO API | 사용 목적 |
 |---|---|
@@ -23,7 +39,7 @@
 
 영화 데이터와 추천 후보를 새로 만들지 않고 기존 MOMO API를 호출합니다. 리뷰는 기존 RAG Seed의 시연용 가상 감상 10건을 사용합니다. 실제 회원 리뷰 본문이나 작성자 정보는 복제하지 않습니다.
 
-## 2. 실행 환경
+## 3. 실행 환경
 
 MOMO Spring Boot 백엔드를 먼저 실행합니다. 기본 주소는 http://localhost:8111 입니다.
 
@@ -33,17 +49,10 @@ MOMO Spring Boot 백엔드를 먼저 실행합니다. 기본 주소는 http://lo
 
     OPENAI_API_KEY=실제_OpenAI_API_키
     MOMO_API_BASE_URL=http://localhost:8111
-    MONGODB_URI=본인_MongoDB_Atlas_URI
-    MONGODB_DATABASE=worklaw_db
-    MONGODB_COLLECTION=law_chunks
-    MONGODB_VECTOR_INDEX=vector_index
-    MONGODB_VECTOR_PATH=embedding
+    CHROMA_PERSIST_DIRECTORY=data/chroma
+    CHROMA_COLLECTION=momo_movie_reviews
 
-실제 API 키와 MongoDB URI는 GitHub에 커밋하지 않습니다.
-
-## 3. Atlas Vector Search 인덱스
-
-MongoDB Atlas에서 worklaw_db.law_chunks 컬렉션을 대상으로 vector_index를 생성합니다. 인덱스 정의는 atlas-vector-index.json을 사용합니다.
+MongoDB Atlas URI, 사용자, 비밀번호, Vector Search 인덱스는 더 이상 필요하지 않습니다. ChromaDB는 로컬 `data/chroma` 폴더에 벡터와 메타데이터를 영구 저장합니다.
 
 ## 4. 데이터 수집 및 색인
 
@@ -57,7 +66,7 @@ MongoDB Atlas에서 worklaw_db.law_chunks 컬렉션을 대상으로 vector_index
 4. 필수 필드와 영화 코드·제목 일치 여부를 확인하고 JSONL로 저장한다.
 5. 리뷰 본문을 500자 단위, 80자 overlap으로 청킹한다.
 6. 영화 메타데이터와 리뷰 제목을 포함해 text-embedding-3-small으로 임베딩한다.
-7. MongoDB Atlas에 저장한다.
+7. ChromaDB PersistentClient를 이용해 `data/chroma`에 저장한다. 코사인 거리로 Top-K 검색한다.
 
 ## 5. 웹서비스 실행
 
@@ -65,7 +74,7 @@ MongoDB Atlas에서 worklaw_db.law_chunks 컬렉션을 대상으로 vector_index
 
 브라우저: http://127.0.0.1:8000
 
-- GET /api/health: MongoDB·색인·OpenAI 설정 상태
+- GET /api/health: ChromaDB·색인·OpenAI 설정 상태
 - GET /api/recommendations?genre=코미디: MOMO 기존 추천 API 프록시
 - POST /api/ask: 자연어 질문 → 벡터 검색 → 근거 기반 답변
 - GET /docs: API 문서
@@ -74,7 +83,7 @@ MongoDB Atlas에서 worklaw_db.law_chunks 컬렉션을 대상으로 vector_index
 
 ## 6. 평가 및 개선
 
-    pytest -q
+    python -m pytest
     python scripts/evaluate.py
 
 8개 평가 질문에 기대 리뷰 ID를 라벨링하고 Recall@K, MRR@K를 계산합니다. 개선 실험은 동일 평가셋에서 청킹 크기와 overlap을 변경하고 재색인한 뒤 결과를 비교합니다. 실행하지 않은 수치를 미리 기록하지 않습니다.
@@ -85,7 +94,7 @@ MongoDB Atlas에서 worklaw_db.law_chunks 컬렉션을 대상으로 vector_index
 - 현재 평가셋은 8개 질문으로 작아 일반화에 한계가 있습니다.
 - 리뷰 근거는 주관적 감상이며 영화에 관한 객관적 사실의 증거가 아닙니다.
 - MOMO 백엔드가 실행 중이어야 영화 상세 수집과 추천 API 프록시를 사용할 수 있습니다.
-- OpenAI 및 MongoDB Atlas 호출에는 네트워크와 사용료가 필요합니다.
+- OpenAI API 호출에는 네트워크와 사용료가 필요합니다.
 - 독립 POC이므로 MOMO 로그인·회원별 권한·MySQL 원본 DB를 직접 수정하지 않습니다.
 
 ## 원본 프로젝트
