@@ -1,4 +1,12 @@
 """MongoDB 접속과 Vector Search 인덱스를 점검한다."""
+import sys
+from pathlib import Path
+
+# scripts/ 디렉터리에서 직접 실행해도 프로젝트 루트를 모듈 경로에 포함한다.
+PROJECT_ROOT = Path(__file__).resolve().parents[1]
+if str(PROJECT_ROOT) not in sys.path:
+    sys.path.insert(0, str(PROJECT_ROOT))
+
 from pymongo.errors import PyMongoError
 
 from app.config import settings
