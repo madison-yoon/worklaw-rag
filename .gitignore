@@ -7,3 +7,6 @@ chroma_db/
 *.log
 .idea/
 .vscode/
+.coverage
+htmlcov/
+data/processed/
