@@ -1,12 +1,18 @@
 from app.rag.chunker import split_documents
 
 
-def test_chunker_keeps_article_citation_metadata():
-    documents = [{"article_id": "제17조", "title": "제17조(근로조건의 명시)", "text": "근로조건 " * 120, "source": "https://law.go.kr/example"}]
+def test_chunker_keeps_momo_review_metadata():
+    documents = [{
+        "document_id": "momo-demo-001", "review_id": "momo-demo-001",
+        "movie_code": "20183782", "movie_title": "기생충",
+        "title": "기생충 — 공간과 표정", "text": "배우 연기와 촬영 " * 120,
+        "source": "https://github.com/madison-yoon/MOMO",
+    }]
     chunks = split_documents(documents, chunk_size=100, chunk_overlap=20)
     assert len(chunks) > 1
-    assert all(chunk["article_id"] == "제17조" for chunk in chunks)
-    assert all(chunk["source"].startswith("https://law.go.kr") for chunk in chunks)
+    assert all(chunk["review_id"] == "momo-demo-001" for chunk in chunks)
+    assert all(chunk["movie_title"] == "기생충" for chunk in chunks)
+    assert all(chunk["source"].startswith("https://github.com/") for chunk in chunks)
     assert all(len(chunk["text"]) <= 100 for chunk in chunks)
 
 
