@@ -1,6 +1,6 @@
-"""국가법령정보센터 공개 법령 본문 페이지에서 근로기준법을 수집한다.
+"""국가법령정보센터의 공개 현행법령 본문 페이지에서 근로기준법을 수집한다.
 
-공동활용 OPEN API 인증키를 사용하지 않는다.
+공동활용 OPEN API 인증키가 필요 없는 공개 법령 페이지를 사용한다.
 """
 import json
 import re
@@ -10,24 +10,23 @@ import requests
 from bs4 import BeautifulSoup
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
-SOURCE_URL = (
-    "https://www.law.go.kr/lsLinkProc.do"
-    "?ancYnChk=0&chrClsCd=010202&lsNm=%EA%B7%BC%EB%A1%9C%EA%B8%B0%EC%A4%80%EB%B2%95&mode=20"
-)
+# 국가법령정보센터의 근로기준법 고정 법령 식별자(lsId=001872)를 사용한다.
+SOURCE_URL = "https://www.law.go.kr/lsInfoP.do?lsId=001872"
 OUTPUT_PATH = PROJECT_ROOT / "data" / "processed" / "labor_standards_act.jsonl"
+
+# 조문 제목은 '제17조(근로조건의 명시)' 또는 전각 괄호 형태로 표시된다.
 ARTICLE_HEADING = re.compile(
-    r"(?m)^\s*(제\d+조(?:의\d+)?)[ \t]*[（(]([^）)\n]{1,120})[）)]"
+    r"(?<![가-힣A-Za-z0-9])(?P<article_id>제\d+조(?:의\d+)?)[ \t]*[（(](?P<title>[^）)\n]{1,120})[）)]"
 )
 EFFECTIVE_DATE = re.compile(r"시행\s*(\d{4})\.\s*(\d{1,2})\.\s*(\d{1,2})")
 
 
 def fetch_law_page() -> str:
-    """공개 법령 본문 페이지를 내려받는다."""
     response = requests.get(
         SOURCE_URL,
         timeout=40,
         headers={
-            "User-Agent": "Mozilla/5.0 (compatible; WorkLaw-RAG/1.0)",
+            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/120 Safari/537.36",
             "Accept": "text/html,application/xhtml+xml",
         },
     )
@@ -36,21 +35,20 @@ def fetch_law_page() -> str:
 
     if "근로기준법" not in response.text:
         raise RuntimeError(
-            "국가법령정보센터 응답에서 근로기준법 본문을 확인하지 못했습니다. "
-            f"응답 주소: {response.url}"
+            "국가법령정보센터 공개 페이지에서 근로기준법을 확인하지 못했습니다. "
+            f"HTTP {response.status_code}, 응답 길이 {len(response.content)} bytes"
         )
     return response.text
 
 
-def extract_law_text(html: str) -> tuple[str, str]:
-    """페이지 HTML에서 시행일자와 본문 텍스트를 추출한다."""
+def extract_articles(html: str) -> list[dict[str, str]]:
     soup = BeautifulSoup(html, "html.parser")
 
-    for element in soup(["script", "style", "noscript", "header", "footer"]):
+    # 화면 조작용 스크립트·스타일은 제외하고 본문 텍스트를 추출한다.
+    for element in soup(["script", "style", "noscript"]):
         element.decompose()
 
-    page_text = soup.get_text("\n", strip=True)
-    page_text = page_text.replace("\xa0", " ")
+    page_text = soup.get_text("\n", strip=True).replace("\xa0", " ")
     page_text = re.sub(r"[ \t]+", " ", page_text)
 
     date_match = EFFECTIVE_DATE.search(page_text)
@@ -59,67 +57,53 @@ def extract_law_text(html: str) -> tuple[str, str]:
         year, month, day = date_match.groups()
         effective_date = f"{year}-{int(month):02d}-{int(day):02d}"
 
-    # 본문 시작점을 '제1조(목적)'으로 고정해 부칙의 제1조(시행일)와 섞이지 않게 한다.
-    start_match = re.search(r"(?m)^\s*제1조\s*[（(]목적[）)]", page_text)
-    if not start_match:
+    # 제목이 있는 조문 헤더를 기준으로 분리한다. 줄 시작 여부에 의존하지 않는다.
+    matches = list(ARTICLE_HEADING.finditer(page_text))
+    if not matches:
         raise RuntimeError(
-            "공개 페이지에서 근로기준법 본문 시작점인 '제1조(목적)'을 찾지 못했습니다. "
-            "국가법령정보센터 페이지 구조가 변경되었을 수 있습니다."
+            "공개 페이지에서 조문 제목 패턴을 찾지 못했습니다. "
+            "페이지가 차단되었거나 국가법령정보센터의 HTML 구조가 변경되었을 수 있습니다. "
+            f"응답 길이: {len(html)} bytes"
         )
 
-    body = page_text[start_match.start():]
-    appendix_match = re.search(r"(?m)^\s*부칙(?:\s|$)", body)
-    if appendix_match:
-        body = body[:appendix_match.start()]
-
-    return body, effective_date
-
-
-def parse_articles(html: str) -> list[dict[str, str]]:
-    """법령 본문을 조문별 레코드로 분리한다."""
-    body, effective_date = extract_law_text(html)
-    matches = list(ARTICLE_HEADING.finditer(body))
-    records: list[dict[str, str]] = []
-
+    records: dict[str, dict[str, str]] = {}
     for index, match in enumerate(matches):
-        article_id = match.group(1)
-        article_title = re.sub(r"\s+", " ", match.group(2)).strip()
+        article_id = match.group("article_id")
+        article_title = re.sub(r"\s+", " ", match.group("title")).strip()
         content_start = match.end()
-        content_end = matches[index + 1].start() if index + 1 < len(matches) else len(body)
-        content = re.sub(r"\s+", " ", body[content_start:content_end]).strip()
+        content_end = matches[index + 1].start() if index + 1 < len(matches) else len(page_text)
+        content = re.sub(r"\s+", " ", page_text[content_start:content_end]).strip()
         content = re.sub(r"^[\s:：]+", "", content)
 
-        if len(content) < 10:
+        # 본문 시작 전 목차/페이지 안내에서 잡힌 가짜 조문 헤더를 걸러낸다.
+        if len(content) < 10 or "본문" not in page_text[:match.start()] and article_id == "제1조":
             continue
 
         title = f"{article_id}({article_title})"
-        records.append(
-            {
-                "article_id": article_id,
-                "title": title,
-                "text": f"{title}\n{content}",
-                "source": SOURCE_URL,
-                "law_name": "근로기준법",
-                "effective_date": effective_date,
-            }
-        )
+        records[article_id] = {
+            "article_id": article_id,
+            "title": title,
+            "text": f"{title}\n{content}",
+            "source": SOURCE_URL,
+            "law_name": "근로기준법",
+            "effective_date": effective_date,
+        }
 
-    # 동일 조문이 페이지 내비게이션과 본문에 중복 노출될 경우 본문 레코드 하나만 유지한다.
-    unique_records = {item["article_id"]: item for item in records}
-    return sorted(
-        unique_records.values(),
+    articles = sorted(
+        records.values(),
         key=lambda item: tuple(int(value) for value in re.findall(r"\d+", item["article_id"])),
     )
+    return articles
 
 
 def main() -> None:
     html = fetch_law_page()
-    articles = parse_articles(html)
+    articles = extract_articles(html)
 
-    if len(articles) < 20:
+    if len(articles) < 80:
         raise RuntimeError(
             f"조문 추출 결과가 {len(articles)}개입니다. "
-            "페이지 구조가 변경되었거나 본문이 일부만 내려왔습니다. "
+            "현행 근로기준법 전체 본문을 가져오지 못한 것으로 판단해 저장을 중단했습니다. "
             "기존 JSONL 파일은 덮어쓰지 않았습니다."
         )
 
