@@ -1,4 +1,4 @@
-from pydantic import AliasChoices, Field
+from pydantic import Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -13,21 +13,13 @@ class Settings(BaseSettings):
     retrieval_top_k: int = 5
     vector_num_candidates_multiplier: int = 10
 
-    law_api_oc: str = Field(default="", validation_alias=AliasChoices("LAW_API_OC", "law_api_oc"))
-    mongodb_uri: str = Field(
-        default="",
-        validation_alias=AliasChoices("MONGODB_URI", "MONGO_URI"),
-    )
-    mongodb_database: str = "worklaw_db"
-    mongodb_collection: str = "law_chunks"
-    mongodb_vector_index: str = "vector_index"
+    mongodb_uri: str = ""
+    mongodb_database: str = "momo_rag"
+    mongodb_collection: str = "review_chunks"
+    mongodb_vector_index: str = "review_vector_index"
     mongodb_vector_path: str = "embedding"
 
-    model_config = SettingsConfigDict(
-        env_file=".env",
-        extra="ignore",
-        case_sensitive=False,
-    )
+    model_config = SettingsConfigDict(env_file=".env", extra="ignore", case_sensitive=False)
 
 
 settings = Settings()
