@@ -1,35 +1,126 @@
-import chromadb
+from functools import lru_cache
+
+from pymongo import MongoClient, UpdateOne
+from pymongo.collection import Collection
+from pymongo.errors import PyMongoError
+
 from app.config import settings
 
-_client = chromadb.PersistentClient(path=settings.chroma_persist_directory)
-_collection = _client.get_or_create_collection(name="worklaw_articles", metadata={"hnsw:space": "cosine"})
+
+@lru_cache(maxsize=1)
+def _get_client() -> MongoClient:
+    if not settings.mongodb_uri:
+        raise RuntimeError(
+            "MONGODB_URI가 설정되지 않았습니다. 프로젝트 루트의 .env를 확인하세요."
+        )
+    return MongoClient(
+        settings.mongodb_uri,
+        serverSelectionTimeoutMS=5000,
+        connectTimeoutMS=5000,
+        appname="WorkLaw-RAG",
+    )
+
+
+def _get_collection() -> Collection:
+    return _get_client()[settings.mongodb_database][settings.mongodb_collection]
+
+
+def check_connection() -> dict:
+    """MongoDB 연결과 저장된 chunk 수를 확인한다."""
+    try:
+        client = _get_client()
+        client.admin.command("ping")
+        count = _get_collection().count_documents({})
+        return {"connected": True, "document_count": count, "error": None}
+    except (PyMongoError, RuntimeError) as exc:
+        return {
+            "connected": False,
+            "document_count": 0,
+            "error": str(exc) if isinstance(exc, RuntimeError) else type(exc).__name__,
+        }
+
 
 def upsert_chunks(chunks: list[dict], embeddings: list[list[float]]) -> None:
     if not chunks:
         raise ValueError("저장할 chunk가 없습니다.")
     if len(chunks) != len(embeddings):
         raise ValueError("chunk와 embedding 개수가 다릅니다.")
-    _collection.upsert(
-        ids=[c["id"] for c in chunks],
-        documents=[c["text"] for c in chunks],
-        embeddings=embeddings,
-        metadatas=[{k: c[k] for k in ("article_id", "title", "source")} for c in chunks],
-    )
 
-def query_chunks(embedding: list[float], top_k: int = 5) -> list[dict]:
-    count = _collection.count()
-    if count == 0:
-        return []
-    result = _collection.query(
-        query_embeddings=[embedding], n_results=min(max(1, top_k), count),
-        include=["documents", "metadatas", "distances"],
-    )
-    docs = (result.get("documents") or [[]])[0]
-    metas = (result.get("metadatas") or [[]])[0]
-    distances = (result.get("distances") or [[]])[0]
-    return [{"text": doc, "metadata": metas[i] or {},
-             "distance": distances[i] if i < len(distances) else None}
-            for i, doc in enumerate(docs)]
+    operations = []
+    for chunk, embedding in zip(chunks, embeddings):
+        if len(embedding) != settings.embedding_dimensions:
+            raise ValueError(
+                f"임베딩 차원이 올바르지 않습니다: {len(embedding)} "
+                f"(기대값: {settings.embedding_dimensions})"
+            )
+        chunk_id = chunk["id"]
+        document = {
+            "_id": chunk_id,
+            "text": chunk["text"],
+            "embedding": embedding,
+            "article_id": chunk["article_id"],
+            "title": chunk["title"],
+            "source": chunk["source"],
+            "chunk_index": chunk.get("chunk_index", 0),
+        }
+        operations.append(
+            UpdateOne({"_id": chunk_id}, {"$set": document}, upsert=True)
+        )
+
+    _get_collection().bulk_write(operations, ordered=False)
+
+
+def query_chunks(embedding: list[float], top_k: int | None = None) -> list[dict]:
+    result_limit = top_k if top_k is not None else settings.retrieval_top_k
+    if len(embedding) != settings.embedding_dimensions:
+        raise ValueError(
+            f"질문 임베딩 차원이 올바르지 않습니다: {len(embedding)} "
+            f"(기대값: {settings.embedding_dimensions})"
+        )
+    if result_limit < 1:
+        raise ValueError("검색 결과 개수는 1 이상이어야 합니다.")
+
+    pipeline = [
+        {
+            "$vectorSearch": {
+                "index": settings.mongodb_vector_index,
+                "path": settings.mongodb_vector_path,
+                "queryVector": embedding,
+                "numCandidates": max(
+                    result_limit * settings.vector_num_candidates_multiplier,
+                    result_limit,
+                ),
+                "limit": result_limit,
+            }
+        },
+        {
+            "$project": {
+                "_id": 0,
+                "text": 1,
+                "article_id": 1,
+                "title": 1,
+                "source": 1,
+                "chunk_index": 1,
+                "relevance_score": {"$meta": "vectorSearchScore"},
+            }
+        },
+    ]
+
+    documents = list(_get_collection().aggregate(pipeline))
+    return [
+        {
+            "text": item["text"],
+            "metadata": {
+                "article_id": item.get("article_id"),
+                "title": item.get("title"),
+                "source": item.get("source"),
+                "chunk_index": item.get("chunk_index", 0),
+            },
+            "score": item.get("relevance_score"),
+        }
+        for item in documents
+    ]
+
 
 def collection_count() -> int:
-    return _collection.count()
+    return _get_collection().count_documents({})
