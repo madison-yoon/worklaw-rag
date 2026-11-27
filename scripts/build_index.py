@@ -17,8 +17,6 @@ SOURCE = PROJECT_ROOT / "data" / "processed" / "momo_reviews.jsonl"
 def main():
     if not settings.openai_api_key:
         raise RuntimeError("OPENAI_API_KEY가 .env에 설정되지 않았습니다.")
-    if not settings.mongodb_uri:
-        raise RuntimeError("MONGODB_URI가 .env에 설정되지 않았습니다.")
     if not SOURCE.exists():
         raise FileNotFoundError("먼저 python scripts/collect_data.py를 실행하세요.")
 
@@ -31,8 +29,9 @@ def main():
         batch = chunks[start:start + settings.embedding_batch_size]
         vectors = embed_texts([item["embedding_text"] for item in batch])
         upsert_chunks(batch, vectors)
-        print(f"임베딩 및 저장: {min(start + len(batch), len(chunks))}/{len(chunks)}")
+        print(f"임베딩 및 로컬 ChromaDB 저장: {min(start + len(batch), len(chunks))}/{len(chunks)}")
     print(f"인덱싱 완료: 리뷰 {len(documents)}건, chunk {len(chunks)}개")
+    print(f"저장 위치: {settings.chroma_persist_directory}")
 
 
 if __name__ == "__main__":
