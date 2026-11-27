@@ -1,0 +1,7 @@
+[
+  {"question":"근로계약서를 작성할 때 사용자가 명시해야 하는 근로조건은 무엇인가요?", "expected_articles":["제17조"]},
+  {"question":"임금은 어떤 원칙에 따라 지급해야 하나요?", "expected_articles":["제43조"]},
+  {"question":"근로시간과 휴게시간의 기본 기준은 어떻게 되나요?", "expected_articles":["제50조","제54조"]},
+  {"question":"연차 유급휴가는 어떻게 보장되나요?", "expected_articles":["제60조"]},
+  {"question":"해고할 때 사용자가 지켜야 하는 절차는 무엇인가요?", "expected_articles":["제23조","제27조"]}
+]
