@@ -1,41 +1,41 @@
-# WorkLaw RAG
+# MOMO Movie Review RAG
 
-근로기준법 문서를 검색하고 검색된 원문 근거에 기반해 답변하는 한국어 RAG 웹서비스 POC입니다.
+MOMO 프로젝트의 영화 감상 리뷰를 자연어로 검색하고, 검색된 리뷰를 근거로 답변하는 RAG 웹서비스 POC입니다.
 
-## 기술 구성
-- API: FastAPI
-- LLM 및 Embedding: OpenAI API (모델은 환경 설정)
-- Vector DB: MongoDB Atlas Vector Search
-- UI: HTML / CSS / Vanilla JavaScript
-- 데이터 원천: 국가법령정보센터 공개 법령 본문 HTML
-- Python: 3.12 이상
+## 프로젝트 범위
+- **도메인:** 영화 감상 리뷰 검색 및 비교
+- **대상 사용자:** MOMO에서 영화 리뷰를 읽고 감상 관점을 비교하려는 사용자
+- **입력:** “라라랜드의 음악과 스토리에 대한 서로 다른 평가는?”과 같은 자연어 질문
+- **출력:** 리뷰 근거를 바탕으로 한 한국어 답변, 영화명·리뷰 제목·리뷰 ID·원문 출처
+- **원천 데이터:** MOMO 저장소의 `MOMO-RAG/scripts/seed.py`에 정의된 영화 5편의 시연용 가상 리뷰 10건
+- **기술:** FastAPI, OpenAI Embeddings/Chat, MongoDB Atlas Vector Search, HTML/CSS/JavaScript
 
-## 1. 실행 환경 준비
+이 POC는 MOMO에 이미 구현된 RAG의 데이터 계약과 설계(리뷰 단위 문서, 500자/80자 청킹, text-embedding-3-small, Atlas Vector Search, GPT-4.1-mini)를 참고해 독립 실행형 데모로 구성했습니다. MOMO의 실제 회원 리뷰 DB를 복제하거나 개인정보를 수집하지 않습니다.
 
-기존 Conda 환경을 활성화하거나 Python 3.12 이상 환경을 준비합니다.
+## 1. 실행 환경
+
+Conda 환경 `worklaw-rag` 또는 Python 3.12 이상 환경에서:
 
 ```bash
 pip install -r requirements.txt
 ```
 
-프로젝트 루트의 `.env`에 다음 항목을 설정합니다.
+프로젝트 루트의 추적되지 않는 `.env`에 설정합니다.
 
 ```dotenv
-OPENAI_API_KEY=OpenAI_API_키
-MONGODB_URI=mongodb+srv://사용자:비밀번호@클러스터주소/
-MONGODB_DATABASE=worklaw_db
-MONGODB_COLLECTION=law_chunks
-MONGODB_VECTOR_INDEX=vector_index
+OPENAI_API_KEY=실제_OpenAI_API_키
+MONGODB_URI=실제_MongoDB_Atlas_URI
+MONGODB_DATABASE=momo_rag
+MONGODB_COLLECTION=review_chunks
+MONGODB_VECTOR_INDEX=review_vector_index
 MONGODB_VECTOR_PATH=embedding
 ```
 
-실제 인증키와 MongoDB URI가 포함된 `.env`는 절대 Git에 커밋하지 않습니다. 법령 원문 수집에는 별도 국가법령정보센터 API 키가 필요하지 않습니다.
+실제 API 키와 MongoDB URI는 Git에 커밋하지 않습니다.
 
-## 2. MongoDB Atlas Vector Search 인덱스
+## 2. Atlas Vector Search 인덱스
 
-Atlas에서 대상 Database와 Collection을 생성하거나 첫 데이터 저장 시 자동 생성되도록 둡니다. 이후 해당 Collection에서 Vector Search Index를 생성합니다.
-
-인덱스 이름은 `vector_index`로 지정하고 아래 정의를 사용합니다.
+Database `momo_rag`, Collection `review_chunks`를 사용합니다. Atlas에서 Vector Search Index를 `review_vector_index` 이름으로 생성하고 다음 정의를 적용합니다.
 
 ```json
 {
@@ -50,24 +50,21 @@ Atlas에서 대상 Database와 Collection을 생성하거나 첫 데이터 저�
 }
 ```
 
-임베딩 차원을 변경했다면 인덱스의 numDimensions도 동일하게 변경해야 합니다.
-
-## 3. 데이터 수집 및 인덱싱
+## 3. 데이터 구축 및 색인
 
 ```bash
 python scripts/collect_data.py
-python scripts/check_mongodb.py
 python scripts/build_index.py
-python scripts/check_mongodb.py
 ```
 
-- 수집기는 국가법령정보센터의 공개 근로기준법 본문 HTML 페이지를 가져옵니다.
-- 조문 제목과 본문을 조문 단위 JSONL로 정제합니다.
-- 인덱싱 스크립트는 조문을 청킹하고 OpenAI 임베딩 API를 호출한 뒤 MongoDB에 저장합니다.
-- 법령 원문 수집은 OpenAI API와 별개이며, 법령 사이트의 공동활용 API 인증키를 사용하지 않습니다.
-- Vector Search 인덱스가 READY 상태가 된 후 검색을 실행합니다.
+- `data/raw/momo_reviews.jsonl`: MOMO RAG Seed에서 가져온 가상 영화 리뷰 10건
+- `scripts/collect_data.py`: 필수 필드 검증, 공백 정리, 중복 제거 및 출처 메타데이터 정규화
+- `data/processed/momo_reviews.jsonl`: 검색 색인의 입력 문서
+- `app/rag/chunker.py`: 리뷰 본문을 500자 단위, 80자 overlap으로 청킹
+- `app/rag/embedder.py`: OpenAI `text-embedding-3-small` 임베딩
+- `app/rag/vector_store.py`: MongoDB Atlas Vector Search 저장·검색
 
-## 4. 웹서비스 실행
+## 4. 웹서비스
 
 ```bash
 uvicorn app.main:app --reload
@@ -75,23 +72,28 @@ uvicorn app.main:app --reload
 
 브라우저에서 `http://127.0.0.1:8000`을 엽니다.
 
-- `GET /api/health`: MongoDB 연결, chunk 수, API 키 설정 상태
-- `POST /api/ask`: 자연어 질문에 대한 근거 기반 답변
+- `GET /api/health`: MongoDB 연결, 색인 청크 수, API 설정 상태
+- `POST /api/ask`: 자연어 질문 → 관련 리뷰 검색 → 근거 기반 답변
 - `GET /docs`: FastAPI API 문서
 
-## 5. 평가 및 테스트
+## 5. 평가와 개선
 
 ```bash
 pytest -q
 python scripts/evaluate.py
 ```
 
-검색 평가는 기대 조문이 있는 오프라인 평가 질문을 사용하며 Recall@K와 MRR@K를 출력합니다. 평가 라벨은 서비스 실행 경로에서 사용하지 않습니다.
+8개 평가 질문에 기대 리뷰 ID를 라벨링했습니다. Recall@K와 MRR@K로 검색 결과를 평가합니다. 개선 실험은 동일 평가셋에서 청킹 크기·overlap 또는 top-k 중 한 항목만 변경하고 재색인한 뒤 비교합니다. 실제 점수는 실행 결과를 기록하며 미리 만들어 넣지 않습니다.
 
-## 데이터 출처 및 한계
-- 데이터는 수집 시점의 국가법령정보센터 공개 근로기준법 본문 페이지를 기준으로 합니다.
-- 법령은 개정될 수 있으므로 최신 시행일자를 확인하고 재수집·재색인해야 합니다.
-- 본 서비스는 학습·정보 탐색용 POC이며 법률 자문이 아닙니다.
-- HTML 페이지 구조가 변경되면 수집기의 조문 추출 규칙을 수정해야 합니다.
-- 검색 품질은 수집 범위, 청킹, 임베딩, Vector Search 인덱스에 영향을 받습니다.
-- OpenAI 임베딩 및 답변 생성에는 API 사용료가 발생할 수 있습니다.
+## 데이터 범위와 한계
+- 현재 데이터는 MOMO RAG 시연용으로 작성한 가상 감상 10건이며, 실제 사용자 리뷰 전체를 대표하지 않습니다.
+- 5편의 영화와 제한된 관점만 포함하므로 다른 영화 질문에는 답할 근거가 없습니다.
+- 리뷰는 주관적 감상이며 영화의 객관적 사실이나 평론가의 합의가 아닙니다.
+- 평가 질문 8개는 소규모 내부 평가셋으로 일반화에 한계가 있습니다.
+- OpenAI 임베딩·답변 생성에는 API 비용이 발생할 수 있습니다.
+- MOMO 원본 서비스의 인증·권한·리뷰 CRUD와 이 독립형 POC는 연결되어 있지 않습니다.
+
+## 원본 프로젝트
+- [MOMO](https://github.com/madison-yoon/MOMO)
+- [MOMO RAG 구현 문서](https://github.com/madison-yoon/MOMO/blob/main/docs/RAG.md)
+- [MOMO RAG Seed 데이터](https://github.com/madison-yoon/MOMO/blob/main/MOMO-RAG/scripts/seed.py)
