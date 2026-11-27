@@ -149,13 +149,13 @@ def main():
         {"OC": settings.law_api_oc, "target": "eflaw", "type": "JSON",
          "query": "근로기준법", "display": "100", "page": "1"},
     )
-    # 본문 조회 API의 ID 파라미터에는 목록 응답의 '법령ID'를 전달한다.
-    # '법령일련번호'는 별도 식별자이므로 ID보다 우선 사용하면 안 된다.
-    law_id = find_value(listing, ("법령ID", "law id", "법령 id", "법령ID값"))
-    if law_id is None:
+    # 공식 활용방법에 따라 목록의 법령일련번호를 본문 조회의 MST로 전달한다.
+    law_mst = find_value(listing, ("법령일련번호", "법령 일련번호"))
+    effective_date = find_value(listing, ("시행일자", "시행일"))
+    if law_mst is None or effective_date is None:
         message = find_value(listing, ("resultMsg", "메시지", "오류메시지"))
         raise RuntimeError(
-            "현행법령 목록에서 근로기준법 ID를 찾지 못했습니다. "
+            "현행법령 목록에서 법령일련번호 또는 시행일자를 찾지 못했습니다. "
             f"API 응답 메시지: {message or str(listing)[:700]}"
         )
 
@@ -165,7 +165,8 @@ def main():
             "OC": settings.law_api_oc,
             "target": "eflaw",
             "type": "JSON",
-            "ID": str(law_id),
+            "MST": str(law_mst),
+            "efYd": str(effective_date),
         },
     )
     articles = extract_articles(detail)
@@ -185,7 +186,7 @@ def main():
 
     effective_date = articles[0].get("effective_date") or "API 응답 미제공"
     print(f"수집 완료: {len(articles)}개 조문")
-    print(f"법령 ID: {law_id}")
+    print(f"법령 일련번호(MST): {law_mst}")
     print(f"시행일자: {effective_date}")
     print(f"저장: {OUTPUT_PATH}")
     print("샘플:", ", ".join(item["article_id"] for item in articles[:5]))
