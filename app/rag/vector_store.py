@@ -89,12 +89,19 @@ def query_chunks(embedding: list[float], top_k: int | None = None) -> list[dict]
 
 
 def clear_collection() -> None:
-    # ChromaDB는 조건 없는 delete()를 허용하지 않으므로 기존 ID를 조회해 삭제한다.
+    """현재 컬렉션의 모든 레코드를 ID 기준으로 안전하게 비운다."""
     collection = _get_collection()
-    existing = collection.get(include=[])
-    ids = existing.get("ids", [])
-    if ids:
-        collection.delete(ids=ids)
+
+    # ChromaDB 1.x의 delete()는 인자 없는 전체 삭제를 지원하지 않는다.
+    # get()으로 ID만 확보한 뒤, 요청 크기를 나눠 명시적으로 삭제한다.
+    existing_ids = collection.get()["ids"]
+    if not existing_ids:
+        return
+
+    batch_size = 500
+    for start in range(0, len(existing_ids), batch_size):
+        batch_ids = existing_ids[start:start + batch_size]
+        collection.delete(ids=batch_ids)
 
 
 def collection_count() -> int:
