@@ -149,9 +149,9 @@ def main():
         {"OC": settings.law_api_oc, "target": "eflaw", "type": "JSON",
          "query": "근로기준법", "display": "100", "page": "1"},
     )
-    # 공식 활용방법은 목록 응답의 '법령일련번호' 또는 '법령상세링크'로
-    # 본문을 조회하도록 안내한다. 법령일련번호를 우선 사용한다.
-    law_id = find_value(listing, ("법령일련번호", "법령ID", "법령 id", "법령ID값"))
+    # 본문 조회 API의 ID 파라미터에는 목록 응답의 '법령ID'를 전달한다.
+    # '법령일련번호'는 별도 식별자이므로 ID보다 우선 사용하면 안 된다.
+    law_id = find_value(listing, ("법령ID", "law id", "법령 id", "법령ID값"))
     if law_id is None:
         message = find_value(listing, ("resultMsg", "메시지", "오류메시지"))
         raise RuntimeError(
