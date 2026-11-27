@@ -48,7 +48,10 @@ def upsert_chunks(chunks: list[dict], embeddings: list[list[float]]) -> None:
             "_id": chunk["id"], "text": chunk["text"], "embedding": embedding,
             "document_id": chunk["document_id"], "review_id": chunk["review_id"],
             "movie_code": chunk["movie_code"], "movie_title": chunk["movie_title"],
+            "genre": chunk.get("genre", ""), "director": chunk.get("director", ""),
+            "release_date": chunk.get("release_date", ""), "overview": chunk.get("overview", ""),
             "title": chunk["title"], "source": chunk["source"],
+            "source_api": chunk.get("source_api", ""),
             "chunk_index": chunk.get("chunk_index", 0),
         }
         operations.append(UpdateOne({"_id": chunk["id"]}, {"$set": document}, upsert=True))
@@ -71,15 +74,18 @@ def query_chunks(embedding: list[float], top_k: int | None = None) -> list[dict]
         }},
         {"$project": {
             "_id": 0, "text": 1, "document_id": 1, "review_id": 1,
-            "movie_code": 1, "movie_title": 1, "title": 1, "source": 1,
-            "chunk_index": 1, "relevance_score": {"$meta": "vectorSearchScore"},
+            "movie_code": 1, "movie_title": 1, "genre": 1, "director": 1,
+            "release_date": 1, "overview": 1, "title": 1, "source": 1,
+            "source_api": 1, "chunk_index": 1,
+            "relevance_score": {"$meta": "vectorSearchScore"},
         }},
     ]
     documents = list(_get_collection().aggregate(pipeline))
     return [{
         "text": item["text"],
         "metadata": {key: item.get(key) for key in
-                     ("document_id", "review_id", "movie_code", "movie_title", "title", "source", "chunk_index")},
+                     ("document_id", "review_id", "movie_code", "movie_title", "genre",
+                      "director", "release_date", "overview", "title", "source", "source_api", "chunk_index")},
         "score": item.get("relevance_score"),
     } for item in documents]
 
