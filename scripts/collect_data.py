@@ -1,4 +1,4 @@
-"""국가법령정보센터 근로기준법 페이지에서 조문을 수집한다."""
+"""국가법령정보센터의 근로기준법 조문 목록을 수집한다."""
 import json
 import re
 from pathlib import Path
@@ -6,60 +6,55 @@ from pathlib import Path
 import requests
 from bs4 import BeautifulSoup
 
-# 2026-10-08 시행 근로기준법 본문 페이지
+# mode=20은 법령 본문 조문 목록을 제공하는 국가법령정보센터 화면이다.
 SOURCE_URL = (
-    "https://www.law.go.kr/LSW/lsInfoP.do"
-    "?ancYnChk=0&chrClsCd=010202&efYd=20261008"
-    "&lsiSeq=285279&urlMode=lsInfoP"
+    "https://www.law.go.kr/lsLinkProc.do"
+    "?ancYnChk=0&chrClsCd=010202&lsNm=%EA%B7%BC%EB%A1%9C%EA%B8%B0%EC%A4%80%EB%B2%95&mode=20"
 )
-OUTPUT_PATH = Path("data/processed/labor_standards_act.jsonl")
+OUTPUT_PATH = Path(__file__).resolve().parents[1] / "data" / "processed" / "labor_standards_act.jsonl"
+
+# 제목 괄호는 일반 괄호와 전각 괄호 모두 허용한다.
 ARTICLE_PATTERN = re.compile(
-    r"(제\s*\d+\s*조(?:\s*의\s*\d+)?\s*\([^)]{1,120}\))"
+    r"제\s*(\d+)\s*조(?:\s*의\s*(\d+))?\s*[（(]\s*([^）)]{1,120})[）)]"
 )
-ARTICLE_NUMBER_PATTERN = re.compile(r"제\s*\d+\s*조(?:\s*의\s*\d+)?")
 
 
 def extract_articles(html: str) -> list[dict]:
     soup = BeautifulSoup(html, "html.parser")
-    root = (
-        soup.select_one("#conScroll")
-        or soup.select_one(".lawcon")
-        or soup.select_one("#content")
-        or soup.body
-        or soup
-    )
-    for node in root.select("script, style, noscript"):
+
+    # 법령 본문은 #content 같은 공통 레이아웃 영역 바깥에 있을 수 있어
+    # 특정 레이아웃 선택자에 의존하지 않고 문서 전체 텍스트를 사용한다.
+    for node in soup.select("script, style, noscript"):
         node.decompose()
 
-    # 조문 제목이 태그로 분리되거나 줄바꿈된 경우도 찾을 수 있도록
-    # 공백을 유지한 전체 텍스트에서 조문 경계를 추출한다.
-    text = re.sub(r"[ \t\u00a0]+", " ", root.get_text("\n", strip=True))
+    text = soup.get_text("\n", strip=True)
+    text = text.replace("\u00a0", " ")
     matches = list(ARTICLE_PATTERN.finditer(text))
 
-    # 본문 영역 선택자가 변경된 경우 문서 전체에서 한 번 더 탐색한다.
     if not matches:
-        full_text = re.sub(r"[ \t\u00a0]+", " ", soup.get_text("\n", strip=True))
-        matches = list(ARTICLE_PATTERN.finditer(full_text))
-        text = full_text
-
-    if not matches:
-        page_title = soup.title.get_text(" ", strip=True) if soup.title else "제목 없음"
-        preview = re.sub(r"\s+", " ", text)[:240]
+        title = soup.title.get_text(" ", strip=True) if soup.title else "제목 없음"
+        preview = re.sub(r"\s+", " ", text)[:500]
         raise RuntimeError(
             "조문 제목을 찾지 못했습니다. "
-            f"응답 페이지: {page_title}. 본문 미리보기: {preview}"
+            f"응답 페이지: {title}. 본문 미리보기: {preview}"
         )
 
     records = {}
     for index, match in enumerate(matches):
+        start = match.start()
         end = matches[index + 1].start() if index + 1 < len(matches) else len(text)
-        block = text[match.start():end].strip()
-        number = ARTICLE_NUMBER_PATTERN.match(match.group(1))
-        if not number or len(block) < 25:
+        block = text[start:end].strip()
+
+        article_number = match.group(1)
+        sub_number = match.group(2)
+        article_id = f"제{article_number}조"
+        if sub_number:
+            article_id += f"의{sub_number}"
+
+        title = f"{article_id}({match.group(3).strip()})"
+        if len(block) < 25:
             continue
 
-        article_id = re.sub(r"\s+", "", number.group(0))
-        title = re.sub(r"\s+", "", match.group(1))
         records[article_id] = {
             "article_id": article_id,
             "title": title,
@@ -73,10 +68,11 @@ def extract_articles(html: str) -> list[dict]:
 def main():
     response = requests.get(
         SOURCE_URL,
-        timeout=30,
+        timeout=40,
         headers={
             "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
-            "AppleWebKit/537.36 Chrome/120.0 Safari/537.36"
+            "AppleWebKit/537.36 Chrome/120.0 Safari/537.36",
+            "Referer": "https://www.law.go.kr/",
         },
     )
     response.raise_for_status()
