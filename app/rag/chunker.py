@@ -10,7 +10,7 @@ def _cut_at_boundary(text: str, start: int, end: int) -> int:
 
 
 def split_documents(documents: list[dict], chunk_size: int = 500, chunk_overlap: int = 80) -> list[dict]:
-    """리뷰를 겹치는 청크로 나누고 영화·리뷰 출처 메타데이터를 보존한다."""
+    """리뷰 본문은 설정 길이로 나누고, 임베딩 입력에는 영화·리뷰 제목을 함께 넣는다."""
     if chunk_size <= 0:
         raise ValueError("chunk_size는 0보다 커야 합니다.")
     if chunk_overlap < 0 or chunk_overlap >= chunk_size:
@@ -25,6 +25,7 @@ def split_documents(documents: list[dict], chunk_size: int = 500, chunk_overlap:
             end = _cut_at_boundary(text, start, min(start + chunk_size, len(text)))
             piece = text[start:end].strip()
             if piece:
+                embedding_text = f'영화: {doc["movie_title"]}\n리뷰 제목: {doc["title"]}\n{piece}'
                 chunks.append({
                     "id": f'{doc["document_id"]}-{index}',
                     "document_id": doc["document_id"],
@@ -32,6 +33,7 @@ def split_documents(documents: list[dict], chunk_size: int = 500, chunk_overlap:
                     "movie_code": doc["movie_code"],
                     "movie_title": doc["movie_title"],
                     "text": piece,
+                    "embedding_text": embedding_text,
                     "title": doc["title"],
                     "source": doc["source"],
                     "chunk_index": index,
