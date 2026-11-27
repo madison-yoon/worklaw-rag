@@ -2,8 +2,7 @@ def _cut_at_boundary(text: str, start: int, end: int) -> int:
     if end >= len(text):
         return len(text)
     window = text[start:end]
-    # Prefer natural Korean/legal text boundaries near the target size.
-    for separator in ("\n\n", "\n", "다.", ". ", " "):
+    for separator in ("。", ". ", "다.", "\n", " "):
         position = window.rfind(separator)
         if position >= int(len(window) * 0.65):
             return start + position + len(separator)
@@ -11,7 +10,7 @@ def _cut_at_boundary(text: str, start: int, end: int) -> int:
 
 
 def split_documents(documents: list[dict], chunk_size: int = 500, chunk_overlap: int = 80) -> list[dict]:
-    """Split each article into overlapping character chunks and preserve citations."""
+    """리뷰를 겹치는 청크로 나누고 영화·리뷰 출처 메타데이터를 보존한다."""
     if chunk_size <= 0:
         raise ValueError("chunk_size는 0보다 커야 합니다.")
     if chunk_overlap < 0 or chunk_overlap >= chunk_size:
@@ -27,11 +26,15 @@ def split_documents(documents: list[dict], chunk_size: int = 500, chunk_overlap:
             piece = text[start:end].strip()
             if piece:
                 chunks.append({
-                    "id": f'{doc["article_id"]}-{index}',
+                    "id": f'{doc["document_id"]}-{index}',
+                    "document_id": doc["document_id"],
+                    "review_id": doc["review_id"],
+                    "movie_code": doc["movie_code"],
+                    "movie_title": doc["movie_title"],
                     "text": piece,
-                    "article_id": doc["article_id"],
                     "title": doc["title"],
                     "source": doc["source"],
+                    "chunk_index": index,
                 })
                 index += 1
             if end >= len(text):
