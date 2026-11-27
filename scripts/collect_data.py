@@ -1,101 +1,191 @@
-"""국가법령정보센터의 근로기준법 조문 목록을 수집한다."""
+"""국가법령정보센터 OPEN API로 현행 근로기준법 조문을 수집한다."""
 import json
 import re
 from pathlib import Path
+from typing import Any
 
 import requests
-from bs4 import BeautifulSoup
 
-# mode=20은 법령 본문 조문 목록을 제공하는 국가법령정보센터 화면이다.
-SOURCE_URL = (
-    "https://www.law.go.kr/lsLinkProc.do"
-    "?ancYnChk=0&chrClsCd=010202&lsNm=%EA%B7%BC%EB%A1%9C%EA%B8%B0%EC%A4%80%EB%B2%95&mode=20"
-)
+from app.config import settings
+
+API_BASE_URL = "https://www.law.go.kr/DRF"
+LIST_URL = f"{API_BASE_URL}/lawSearch.do"
+DETAIL_URL = f"{API_BASE_URL}/lawService.do"
 OUTPUT_PATH = Path(__file__).resolve().parents[1] / "data" / "processed" / "labor_standards_act.jsonl"
-
-# 제목 괄호는 일반 괄호와 전각 괄호 모두 허용한다.
-ARTICLE_PATTERN = re.compile(
-    r"제\s*(\d+)\s*조(?:\s*의\s*(\d+))?\s*[（(]\s*([^）)]{1,120})[）)]"
-)
+SOURCE_URL = "https://www.law.go.kr/법령/근로기준법"
 
 
-def extract_articles(html: str) -> list[dict]:
-    soup = BeautifulSoup(html, "html.parser")
-
-    # 법령 본문은 #content 같은 공통 레이아웃 영역 바깥에 있을 수 있어
-    # 특정 레이아웃 선택자에 의존하지 않고 문서 전체 텍스트를 사용한다.
-    for node in soup.select("script, style, noscript"):
-        node.decompose()
-
-    text = soup.get_text("\n", strip=True)
-    text = text.replace("\u00a0", " ")
-    matches = list(ARTICLE_PATTERN.finditer(text))
-
-    if not matches:
-        title = soup.title.get_text(" ", strip=True) if soup.title else "제목 없음"
-        preview = re.sub(r"\s+", " ", text)[:500]
+def request_json(url: str, params: dict[str, str]) -> dict[str, Any]:
+    response = requests.get(
+        url,
+        params=params,
+        timeout=40,
+        headers={"User-Agent": "WorkLaw-RAG/1.0"},
+    )
+    response.raise_for_status()
+    try:
+        payload = response.json()
+    except ValueError as error:
         raise RuntimeError(
-            "조문 제목을 찾지 못했습니다. "
-            f"응답 페이지: {title}. 본문 미리보기: {preview}"
-        )
+            f"국가법령정보센터가 JSON이 아닌 응답을 반환했습니다: {response.text[:500]}"
+        ) from error
 
-    records = {}
-    for index, match in enumerate(matches):
-        start = match.start()
-        end = matches[index + 1].start() if index + 1 < len(matches) else len(text)
-        block = text[start:end].strip()
+    if not isinstance(payload, dict):
+        raise RuntimeError(f"예상하지 못한 API 응답 형식입니다: {type(payload).__name__}")
 
-        article_number = match.group(1)
-        sub_number = match.group(2)
+    return payload
+
+
+def find_value(data: Any, candidates: tuple[str, ...]) -> Any:
+    """중첩된 API 응답에서 후보 키의 첫 번째 값을 찾는다."""
+    if isinstance(data, dict):
+        for key in candidates:
+            if key in data and data[key] not in (None, ""):
+                return data[key]
+        for value in data.values():
+            found = find_value(value, candidates)
+            if found not in (None, ""):
+                return found
+    elif isinstance(data, list):
+        for item in data:
+            found = find_value(item, candidates)
+            if found not in (None, ""):
+                return found
+    return None
+
+
+def find_article_nodes(data: Any) -> list[dict[str, Any]]:
+    """응답의 조문 단위를 재귀적으로 찾아 반환한다."""
+    found: list[dict[str, Any]] = []
+
+    def walk(node: Any):
+        if isinstance(node, dict):
+            article_number = node.get("조문번호")
+            article_text = node.get("조문내용")
+            if article_number not in (None, "") and article_text not in (None, ""):
+                found.append(node)
+            for value in node.values():
+                walk(value)
+        elif isinstance(node, list):
+            for item in node:
+                walk(item)
+
+    walk(data)
+    return found
+
+
+def normalize_text(value: Any) -> str:
+    if isinstance(value, list):
+        return "\n".join(filter(None, (normalize_text(item) for item in value)))
+    if isinstance(value, dict):
+        return "\n".join(filter(None, (normalize_text(item) for item in value.values())))
+    if value is None:
+        return ""
+    return re.sub(r"\s+", " ", str(value)).strip()
+
+
+def extract_articles(payload: dict[str, Any]) -> list[dict[str, Any]]:
+    nodes = find_article_nodes(payload)
+    records: dict[str, dict[str, str]] = {}
+
+    for node in nodes:
+        raw_number = str(node.get("조문번호", "")).strip()
+        if not raw_number.isdigit():
+            continue
+
+        article_number = int(raw_number)
+        raw_sub_number = node.get("조문가지번호", "0")
+        try:
+            sub_number = int(raw_sub_number or 0)
+        except (TypeError, ValueError):
+            sub_number = 0
+
         article_id = f"제{article_number}조"
         if sub_number:
             article_id += f"의{sub_number}"
 
-        title = f"{article_id}({match.group(3).strip()})"
-        if len(block) < 25:
+        title_text = normalize_text(node.get("조문제목")) or "제목 없음"
+        article_text = normalize_text(node.get("조문내용"))
+        if len(article_text) < 10:
             continue
 
         records[article_id] = {
             "article_id": article_id,
-            "title": title,
-            "text": block,
+            "title": f"{article_id}({title_text})",
+            "text": f"{article_id}({title_text})\n{article_text}",
             "source": SOURCE_URL,
+            "law_name": "근로기준법",
+            "effective_date": normalize_text(
+                find_value(payload, ("시행일자", "시행일"))
+            ),
         }
 
-    return list(records.values())
+    return sorted(
+        records.values(),
+        key=lambda item: tuple(
+            int(part) for part in re.findall(r"\d+", item["article_id"])
+        ),
+    )
 
 
 def main():
-    response = requests.get(
-        SOURCE_URL,
-        timeout=40,
-        headers={
-            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
-            "AppleWebKit/537.36 Chrome/120.0 Safari/537.36",
-            "Referer": "https://www.law.go.kr/",
+    if not settings.law_api_oc:
+        raise RuntimeError(
+            ".env에 LAW_API_OC를 설정하세요. 국가법령정보센터에서 발급받은 OC 인증키가 필요합니다."
+        )
+
+    common_params = {
+        "OC": settings.law_api_oc,
+        "type": "JSON",
+        "query": "근로기준법",
+        "display": "100",
+        "page": "1",
+    }
+
+    listing = request_json(
+        LIST_URL,
+        {"OC": settings.law_api_oc, "target": "eflaw", "type": "JSON",
+         "query": "근로기준법", "display": "100", "page": "1"},
+    )
+    law_id = find_value(listing, ("법령ID", "법령 id", "법령ID값"))
+    if law_id is None:
+        message = find_value(listing, ("resultMsg", "메시지", "오류메시지"))
+        raise RuntimeError(
+            "현행법령 목록에서 근로기준법 ID를 찾지 못했습니다. "
+            f"API 응답 메시지: {message or str(listing)[:700]}"
+        )
+
+    detail = request_json(
+        DETAIL_URL,
+        {
+            "OC": settings.law_api_oc,
+            "target": "eflaw",
+            "type": "JSON",
+            "ID": str(law_id),
         },
     )
-    response.raise_for_status()
-    response.encoding = response.apparent_encoding
-
-    articles = extract_articles(response.text)
+    articles = extract_articles(detail)
     if len(articles) < 20:
+        message = find_value(detail, ("resultMsg", "메시지", "오류메시지"))
         raise RuntimeError(
-            f"조문 {len(articles)}개만 추출됐습니다. "
-            "수집 결과를 저장하지 않았습니다."
+            f"조문 추출 결과가 {len(articles)}개입니다. "
+            f"API 응답 메시지: {message or str(detail)[:700]}"
         )
 
     OUTPUT_PATH.parent.mkdir(parents=True, exist_ok=True)
-    temp = OUTPUT_PATH.with_suffix(".jsonl.tmp")
-    with temp.open("w", encoding="utf-8") as file:
+    temp_path = OUTPUT_PATH.with_suffix(".jsonl.tmp")
+    with temp_path.open("w", encoding="utf-8") as file:
         for article in articles:
             file.write(json.dumps(article, ensure_ascii=False) + "\n")
-    temp.replace(OUTPUT_PATH)
+    temp_path.replace(OUTPUT_PATH)
 
+    effective_date = articles[0].get("effective_date") or "API 응답 미제공"
     print(f"수집 완료: {len(articles)}개 조문")
+    print(f"법령 ID: {law_id}")
+    print(f"시행일자: {effective_date}")
     print(f"저장: {OUTPUT_PATH}")
     print("샘플:", ", ".join(item["article_id"] for item in articles[:5]))
-    print("출처:", SOURCE_URL)
+    print(f"출처: {SOURCE_URL}")
 
 
 if __name__ == "__main__":
