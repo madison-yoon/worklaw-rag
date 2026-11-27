@@ -11,8 +11,9 @@ _model = None
 _client = None
 _col = None
 
-def chunks(text: str) -> list[str]:
-    size, overlap = settings.chunk_size, settings.overlap
+def chunks(text: str, size: int | None = None, overlap: int | None = None) -> list[str]:
+    size = settings.chunk_size if size is None else size
+    overlap = settings.overlap if overlap is None else overlap
     if size <= 0 or overlap < 0 or overlap >= size:
         raise ValueError("Invalid chunk size/overlap configuration")
     text = " ".join(text.split())
