@@ -186,7 +186,7 @@ def extract_articles(payload: dict[str, Any]) -> list[dict[str, Any]]:
     return sorted(
         records.values(),
         key=lambda item: tuple(
-            int(part) for part in re.findall(r"\\d+", item["article_id"])
+            int(part) for part in re.findall(r"\d+", item["article_id"])
         ),
     )
 
