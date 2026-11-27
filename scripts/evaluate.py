@@ -1,11 +1,17 @@
 """Recall@K와 MRR@K로 조문 검색 품질을 평가한다."""
 import json
+import sys
 from pathlib import Path
+
+# scripts/ 디렉터리에서 직접 실행해도 프로젝트 루트를 모듈 경로에 포함한다.
+PROJECT_ROOT = Path(__file__).resolve().parents[1]
+if str(PROJECT_ROOT) not in sys.path:
+    sys.path.insert(0, str(PROJECT_ROOT))
 
 from app.config import settings
 from app.rag.retriever import retrieve
 
-TEST_FILE = Path("data/evaluation/questions.json")
+TEST_FILE = PROJECT_ROOT / "data" / "evaluation" / "questions.json"
 
 
 def calculate_metrics(cases, search, top_k):
