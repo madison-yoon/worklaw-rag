@@ -12,10 +12,13 @@ class Settings(BaseSettings):
     retrieval_top_k: int = 5
     vector_num_candidates_multiplier: int = 10
 
+    # 기존 MOMO Spring Boot API를 영화 메타데이터 원천으로 사용한다.
+    momo_api_base_url: str = "http://localhost:8111"
+
     mongodb_uri: str = ""
-    mongodb_database: str = "momo_rag_poc"
-    mongodb_collection: str = "review_chunks"
-    mongodb_vector_index: str = "review_vector_index"
+    mongodb_database: str = "worklaw_db"
+    mongodb_collection: str = "law_chunks"
+    mongodb_vector_index: str = "vector_index"
     mongodb_vector_path: str = "embedding"
 
     model_config = SettingsConfigDict(env_file=".env", extra="ignore", case_sensitive=False)
