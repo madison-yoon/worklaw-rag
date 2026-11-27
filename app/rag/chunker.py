@@ -10,7 +10,7 @@ def _cut_at_boundary(text: str, start: int, end: int) -> int:
 
 
 def split_documents(documents: list[dict], chunk_size: int = 500, chunk_overlap: int = 80) -> list[dict]:
-    """리뷰 본문은 설정 길이로 나누고, 임베딩 입력에는 영화·리뷰 제목을 함께 넣는다."""
+    """리뷰와 MOMO 영화 상세 메타데이터를 함께 검색할 수 있도록 청킹한다."""
     if chunk_size <= 0:
         raise ValueError("chunk_size는 0보다 커야 합니다.")
     if chunk_overlap < 0 or chunk_overlap >= chunk_size:
@@ -19,23 +19,33 @@ def split_documents(documents: list[dict], chunk_size: int = 500, chunk_overlap:
     chunks = []
     for doc in documents:
         text = " ".join(doc["text"].split())
+        metadata = doc.get("movie_metadata_text", "")
         start = 0
         index = 0
         while start < len(text):
             end = _cut_at_boundary(text, start, min(start + chunk_size, len(text)))
             piece = text[start:end].strip()
             if piece:
-                embedding_text = f'영화: {doc["movie_title"]}\n리뷰 제목: {doc["title"]}\n{piece}'
+                embedding_text = (
+                    f'영화: {doc["movie_title"]}\n'
+                    f'영화 정보: {metadata}\n'
+                    f'리뷰 제목: {doc["title"]}\n{piece}'
+                )
                 chunks.append({
                     "id": f'{doc["document_id"]}-{index}',
                     "document_id": doc["document_id"],
                     "review_id": doc["review_id"],
                     "movie_code": doc["movie_code"],
                     "movie_title": doc["movie_title"],
+                    "genre": doc.get("genre", ""),
+                    "director": doc.get("director", ""),
+                    "release_date": doc.get("release_date", ""),
+                    "overview": doc.get("overview", ""),
                     "text": piece,
                     "embedding_text": embedding_text,
                     "title": doc["title"],
                     "source": doc["source"],
+                    "source_api": doc.get("source_api", ""),
                     "chunk_index": index,
                 })
                 index += 1
