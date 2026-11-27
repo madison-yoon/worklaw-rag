@@ -20,7 +20,7 @@ DETAIL_URL = f"{API_BASE_URL}/lawService.do"
 OUTPUT_PATH = PROJECT_ROOT / "data" / "processed" / "labor_standards_act.jsonl"
 SOURCE_URL = "https://www.law.go.kr/법령/근로기준법"
 
-LAW_NAME_KEYS = ("법령명_한글", "법령명한글", "법령명", "법령명_한글")
+LAW_NAME_KEYS = ("법령명_한글", "법령명한글", "법령명")
 LAW_ID_KEYS = ("법령ID", "법령아이디", "법령 ID")
 
 
