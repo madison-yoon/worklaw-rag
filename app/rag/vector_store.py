@@ -88,5 +88,10 @@ def query_chunks(embedding: list[float], top_k: int | None = None) -> list[dict]
     ]
 
 
+def clear_collection() -> None:
+    # 재색인 시 이전 청크가 남아 검색 결과에 섞이지 않도록 전체 교체한다.
+    _get_collection().delete()
+
+
 def collection_count() -> int:
     return _get_collection().count()
