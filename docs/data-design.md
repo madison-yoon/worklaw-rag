@@ -51,7 +51,7 @@
 - 임베딩: OpenAI `text-embedding-3-small`
 - 차원: 1536
 - 벡터 DB: MongoDB Atlas Vector Search
-- Database / Collection: `momo_rag.review_chunks`
+- Database / Collection: `momo_rag_poc.review_chunks`
 - Vector index: `review_vector_index`
 - 유사도: cosine
 
