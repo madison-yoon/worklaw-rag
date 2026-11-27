@@ -1,52 +1,7 @@
 [
-  {
-    "question": "기생충 리뷰에서 배우들의 연기와 촬영에 대한 긍정적인 평가는 무엇인가요?",
-    "expected_documents": [
-      "momo-demo-001"
-    ]
-  },
-  {
-    "question": "인터스텔라의 음악과 가족 서사에 대한 감상은 어떻게 나타나나요?",
-    "expected_documents": [
-      "momo-demo-002"
-    ]
-  },
-  {
-    "question": "극한직업의 코미디 연출과 반복되는 장면에 대한 아쉬움은 무엇인가요?",
-    "expected_documents": [
-      "momo-demo-008"
-    ]
-  },
-  {
-    "question": "라라랜드에서 음악은 좋지만 관계 변화와 스토리가 아쉽다는 평가는?",
-    "expected_documents": [
-      "momo-demo-009"
-    ]
-  },
-  {
-    "question": "겨울왕국의 노래와 색채를 긍정적으로 평가한 리뷰를 찾아줘.",
-    "expected_documents": [
-      "momo-demo-005"
-    ]
-  },
-  {
-    "question": "인터스텔라의 웅장한 음악이 대사 집중을 방해한다는 의견은?",
-    "expected_documents": [
-      "momo-demo-007"
-    ]
-  },
-  {
-    "question": "기생충에 대한 긍정적 평가와 비판적 평가를 각각 비교해줘.",
-    "expected_documents": [
-      "momo-demo-001",
-      "momo-demo-006"
-    ]
-  },
-  {
-    "question": "라라랜드의 촬영 색감과 음악을 함께 언급한 리뷰는?",
-    "expected_documents": [
-      "momo-demo-004",
-      "momo-demo-009"
-    ]
-  }
+ {"question":"리스트를 순회하면서 인덱스를 얻으려면?","expected_terms":["enumerate"]},
+ {"question":"파일을 안전하게 열고 자동으로 닫는 방법은?","expected_terms":["with statement","context manager"]},
+ {"question":"iterator와 iterable의 차이는?","expected_terms":["iterator","iter"]},
+ {"question":"예외를 처리하는 문법은?","expected_terms":["try","except"]},
+ {"question":"비동기 함수에서 await는 어떻게 쓰는가?","expected_terms":["async","await"]}
 ]

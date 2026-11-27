@@ -1,33 +1,20 @@
-from pathlib import Path
+import os
+from dataclasses import dataclass
+from dotenv import load_dotenv
+load_dotenv()
 
-from pydantic_settings import BaseSettings, SettingsConfigDict
-
-
-PROJECT_ROOT = Path(__file__).resolve().parents[1]
-
-
-class Settings(BaseSettings):
-    openai_api_key: str = ""
-    openai_embedding_model: str = "text-embedding-3-small"
-    openai_chat_model: str = "gpt-4.1-mini"
-    embedding_dimensions: int = 1536
-    chunk_size: int = 500
-    chunk_overlap: int = 80
-    embedding_batch_size: int = 100
-    retrieval_top_k: int = 5
-    vector_num_candidates_multiplier: int = 10
-
-    momo_api_base_url: str = "http://localhost:8111"
-
-    # MongoDB Atlas Vector Search
-    mongodb_uri: str = ""
-    mongodb_database: str = "worklaw_db"
-    mongodb_collection: str = "law_chunks"
-    mongodb_vector_index: str = "vector_index"
-    mongodb_vector_path: str = "embedding"
-    mongodb_server_selection_timeout_ms: int = 8000
-
-    model_config = SettingsConfigDict(env_file=".env", extra="ignore", case_sensitive=False)
-
-
+@dataclass(frozen=True)
+class Settings:
+    api_key: str = os.getenv("OPENAI_API_KEY", "")
+    base_url: str | None = os.getenv("OPENAI_BASE_URL") or None
+    llm_model: str = os.getenv("OPENAI_MODEL", "gpt-4o-mini")
+    sitemap: str = os.getenv("DOCS_SITEMAP_URL", "https://docs.python.org/3/sitemap.xml")
+    max_pages: int = int(os.getenv("MAX_PAGES", "100"))
+    chunk_size: int = int(os.getenv("CHUNK_SIZE", "900"))
+    overlap: int = int(os.getenv("CHUNK_OVERLAP", "150"))
+    top_k: int = int(os.getenv("TOP_K", "5"))
+    db_path: str = os.getenv("CHROMA_PATH", "./data/chroma")
+    collection: str = os.getenv("CHROMA_COLLECTION", "python_docs")
+    embedding_model: str = os.getenv("EMBEDDING_MODEL", "sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2")
+    timeout: int = int(os.getenv("REQUEST_TIMEOUT", "20"))
 settings = Settings()
