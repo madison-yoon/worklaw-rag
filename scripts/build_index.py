@@ -29,7 +29,7 @@ def main():
     chunks = split_documents(documents, settings.chunk_size, settings.chunk_overlap)
     for start in range(0, len(chunks), settings.embedding_batch_size):
         batch = chunks[start:start + settings.embedding_batch_size]
-        vectors = embed_texts([item["text"] for item in batch])
+        vectors = embed_texts([item["embedding_text"] for item in batch])
         upsert_chunks(batch, vectors)
         print(f"임베딩 및 저장: {min(start + len(batch), len(chunks))}/{len(chunks)}")
     print(f"인덱싱 완료: 리뷰 {len(documents)}건, chunk {len(chunks)}개")
