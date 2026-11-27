@@ -89,8 +89,12 @@ def query_chunks(embedding: list[float], top_k: int | None = None) -> list[dict]
 
 
 def clear_collection() -> None:
-    # 재색인 시 이전 청크가 남아 검색 결과에 섞이지 않도록 전체 교체한다.
-    _get_collection().delete()
+    # ChromaDB는 조건 없는 delete()를 허용하지 않으므로 기존 ID를 조회해 삭제한다.
+    collection = _get_collection()
+    existing = collection.get(include=[])
+    ids = existing.get("ids", [])
+    if ids:
+        collection.delete(ids=ids)
 
 
 def collection_count() -> int:
