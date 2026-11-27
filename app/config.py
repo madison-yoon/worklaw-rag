@@ -1,4 +1,9 @@
+from pathlib import Path
+
 from pydantic_settings import BaseSettings, SettingsConfigDict
+
+
+PROJECT_ROOT = Path(__file__).resolve().parents[1]
 
 
 class Settings(BaseSettings):
@@ -15,11 +20,9 @@ class Settings(BaseSettings):
     # 기존 MOMO Spring Boot API를 영화 메타데이터 원천으로 사용한다.
     momo_api_base_url: str = "http://localhost:8111"
 
-    mongodb_uri: str = ""
-    mongodb_database: str = "worklaw_db"
-    mongodb_collection: str = "law_chunks"
-    mongodb_vector_index: str = "vector_index"
-    mongodb_vector_path: str = "embedding"
+    # 벡터 데이터는 프로젝트 내부에 로컬 영구 저장한다.
+    chroma_persist_directory: str = str(PROJECT_ROOT / "data" / "chroma")
+    chroma_collection: str = "momo_movie_reviews"
 
     model_config = SettingsConfigDict(env_file=".env", extra="ignore", case_sensitive=False)
 
